@@ -4,11 +4,18 @@
 #include <iostream>
 #include <cassert>
 
+int Gain::eval(const CardDeck& state) const
+{
+  int sum = base;
+  for(auto&& req : multipliers)
+    sum+= req(state);
+  return sum;
+}
 
 bool CardType::canBuild(const Player& state) const
 {
-  // check money(card_count)
-  if(state.get_money() < cost) return false;
+  // check money(card_count) is one higher than card
+  if(state.get_money()-1 < cost) return false;
 
   // check requirements
   for(auto req : requirements)
@@ -16,6 +23,15 @@ bool CardType::canBuild(const Player& state) const
     if(req(state.hand_view()) == false) return false;
   }
 
+  // check uniqness
+  if(max_one_per_player)
+  {
+    // check if player already owns this
+    for(const Card card : state.built_view().lookup())
+      if(card.type == this)
+        return false;
+  }
+  
   return true;
 }
 
@@ -70,6 +86,10 @@ void CardDeck::add(Card card)
 {
   cards.push_back(card);
 }
+void CardDeck::add(const CardType* cardType)
+{
+  cards.push_back(Card{cardType});
+}
 
 size_t CardDeck::size() const{ return cards.size();}
 
@@ -91,7 +111,7 @@ void CardPool::shuffleDiscard()
   discarded.transfer(avaliable, discarded.size());
 }
 
-void CardPool::push_discarded(const CardType* card)
+void CardPool::discard_card(const CardType* card)
 {
   discarded.add(Card{card});
 }
@@ -101,54 +121,104 @@ void Player::draw_from(CardPool& src, std::size_t n)
   src.take(handDeck, n);
 }
 
-const CardDeck& Player::built_view() const{ return builtArea;}
-const CardDeck& Player::hand_view() const{ return handDeck;}
+const CardDeck& Player::built_view()     const{return builtArea;}
+const CardDeck& Player::hand_view()      const{return handDeck;}
 const CardType* Player::view_toBeBuild() const{assert(toBeBuild!=nullptr); return toBeBuild;}
-int Player::get_income() const {return currentIncome;}
-int Player::get_victoryPoints() const {return victoryPoints;}
-int Player::get_money() const {return handDeck.size();}
-PlayerState Player::get_state() const {return state;}
-bool Player::can_progress() const {return canProgress;}
-CardDeck& Player::get_hand(){ return handDeck;}
+
+int Player::get_income()                 const{return currentIncome;}
+int Player::get_victoryPoints()          const{return victoryPoints;}
+int Player::get_money()                  const{return handDeck.size();}
+PlayerState Player::get_state()          const{return state;}
+bool Player::can_progress()              const{return canProgress;}
+
+CardDeck& Player::get_hand()             {return handDeck;}
+CardDeck& Player::get_event_select()     {return eventSelectDeck;}
 
 void Player::cancel_select_mode()
 {
-  unselect_all(); 
+  handDeck.unselect_all(); 
   state = PlayerState::SELECT_CARD;
   handDeck.add(Card{toBeBuild});
 }
 
 void Player::progress()
 {
-  if(!eval_can_progress()) return;
+  // if(!eval_can_progress()) return;
   
   switch(state)
   {
     case PlayerState::DISCARD_2:
     {
-        for(const CardType* card : handDeck.pop_selected())
-          masterPool.push_discarded(card);
+        // move 2 selcted to discarded
+        handDeck.pop_selected(masterPool.discarded);
+
+        
         // Progress to next state
         state = PlayerState::SELECT_CARD; 
     }
     break;
+    case PlayerState::RESIGN_BONUS_SELECT:
+    {
+        // add selected to hand
+        eventSelectDeck.pop_selected(handDeck);
+        // discard all other
+        eventSelectDeck.transfer(masterPool.discarded, eventSelectDeck.size());
+          
+        state = PlayerState::UPDATE_STATS; 
+        progress(); // @TEMPORARY__TEMPORARY
+    }
+    break;
     case PlayerState::SELECT_CARD:
     {
-        toBeBuild = handDeck.pop_selected()[0];
+        // move build to temporary (will not show in hand) 
+        handDeck.pop_selected(toBeBuild);
+        // Progress to next state
         state = PlayerState::SELECT_PAYMENT;
     }
     break;
     case PlayerState::SELECT_PAYMENT:
     {
-        for(const CardType* card : handDeck.pop_selected())
-          masterPool.push_discarded(card);
+        //@RULES remove payment
+        handDeck.pop_selected(masterPool.discarded);
+        
+        //@RULES build selected
+        builtArea.add(toBeBuild);
+        
+        // Progress to next state
         state = PlayerState::UPDATE_STATS;
+    }
+    // break; // @TEMPORARY__TEMPORARY
+    case PlayerState::UPDATE_STATS:
+    {        
+        //@RULES update victoryPoints
+        victoryPoints = builtArea.sumVictory();
+        //@RULES add cards revenue to hand
+        masterPool.take(        
+          handDeck,
+          builtArea.sumMoney()
+        );
+        state = PlayerState::FINISHED;
+    }
+    case PlayerState::FINISHED:
+    {
+        state = PlayerState::SELECT_CARD;
     }
     break;
     default:
     break;
   }
   eval_can_progress();
+}
+
+void Player::pass()
+{
+  assert(state == PlayerState::SELECT_CARD && "can only pass in build select stage");
+
+  //@RULES give player 5 to choose 1 from
+  masterPool.take(eventSelectDeck, 5);
+
+  state = PlayerState::RESIGN_BONUS_SELECT;
+  toBeBuild = nullptr;
 }
 
 bool Player::eval_can_progress()
@@ -158,6 +228,12 @@ bool Player::eval_can_progress()
     case PlayerState::DISCARD_2:
     {
       return canProgress = (handDeck.count_selected() == 2);      
+    }
+    break;
+    case PlayerState::RESIGN_BONUS_SELECT:
+    {
+      //@RULES player must to select one card
+      return canProgress = (eventSelectDeck.count_selected() == 1);      
     }
     break;
     case PlayerState::SELECT_CARD:
@@ -175,9 +251,11 @@ bool Player::eval_can_progress()
   }
 }
 
+
+
 void Player::select_card(Card& card)
 {
-  if(card.selected)
+  if(card.isSelected())
   {
     if(state == PlayerState::SELECT_CARD) toBeBuild=nullptr;
     card.selected = false;
@@ -185,69 +263,31 @@ void Player::select_card(Card& card)
     return;
   }
   
-  switch(state)
-  {
-    case PlayerState::SELECT_CARD:
-      // firstly unselect all onther cards, because only one can be build
-      unselect_all();
-      toBeBuild = card.type;
-      card.selected = true;
-    break;
-    default:
-      card.selected = true;    
+  // unselect all, if only one can be selected
+  if(state == PlayerState::RESIGN_BONUS_SELECT){
+      eventSelectDeck.unselect_all();
+  } 
+  else if(state==PlayerState::SELECT_CARD){
+      handDeck.unselect_all();
+    toBeBuild = card.type;
   }
-
+  
+  card.selected = true;   
   eval_can_progress();
 }
 
-void Player::unselect_all()
+void CardDeck::unselect_all()
 {
-  for(Card& card : handDeck.get_cards())
+  for(Card& card : get_cards())
     card.selected = false;
 }
 
-void Player::print_hand() const
-{
-  for(const Card& instance : handDeck.lookup())
-  {
-    const CardType& card = *instance.type;
-    std::cout << card.cost<< " " << card.name << " " << card.cost << std::endl;
-    std::cout << ((card.tags.Transport!=0)?
-                 std::to_string(card.tags.Transport)+ "x .[]}.":"") << std::endl
-              << ((card.tags.Shopping!=0)?
-                 std::to_string(card.tags.Shopping)+  "x *\\./":"") << std::endl
-              << ((card.tags.Recreation!=0)?
-                 std::to_string(card.tags.Recreation)+"x  _|_ ":"") << std::endl;
-    // requirements
-    // 
-
-    // money gain
-    std::cout << "Money gain:" << std::endl;
-    for(auto rev : card.moneyRevenue)
-    {
-      std::cout << rev.amount << " "; 
-    }
-    std:: cout << std::endl;
-
-    // victory points
-    std::cout << "Victory points: :" << std::endl;
-    for(auto vic : card.victoryPoints)
-    {
-      std::cout << vic.amount << " ";
-    }
-    std::cout << std::endl << std::endl;
-  
-    
-  }
-}
-
-int CardDeck::sumGain() const
+int CardDeck::sumMoney() const
 {
   int sum = 0;
   for(Card card : lookup())
   {
-    for(const Gain& gain : card.type->moneyRevenue)
-      sum += gain.gain(*this);
+    sum += card.type->moneyRevenue.eval(*this);
   }
   return sum;
 }
@@ -256,31 +296,34 @@ int CardDeck::sumVictory() const
   int sum = 0;
   for(Card card : lookup())
   {
-    for(const Gain& gain : card.type->victoryPoints)
-      sum += gain.gain(*this);
+    sum += card.type->victoryPoints.eval(*this);
   }
   return sum;
 }
-int Gain::gain(const CardDeck& state) const
-{
-  return this->multimlier(state);
-}
 
-[[nodiscard]] std::vector<const CardType*> CardDeck::pop_selected()
+void CardDeck::pop_selected(CardDeck& dest)
 {
-  std::vector<const CardType*> popp;
   auto iter = cards.begin();
   while(iter != cards.end())
   {
     if(iter->isSelected())
     {
-      popp.push_back(iter->type);
+      dest.add(iter->type);
       iter = cards.erase(iter);
     }else
     iter++;
   }
-  return popp;
 }
+
+void CardDeck::pop_selected(const CardType*& dest)
+{
+  CardDeck temp;
+  pop_selected(temp);
+  assert(temp.size()==1 && "more than 1 card was selected");
+  dest = temp.get_cards().begin()->type;
+}
+
+
 
 int CardDeck::count_selected() const 
 {

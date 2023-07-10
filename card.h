@@ -1,7 +1,8 @@
-#pragma once
 
+#pragma once
 #include <cmath>
 #include <cstddef>
+#include <algorithm>
 #include <functional>
 #include <list>
 #include <random>
@@ -11,31 +12,43 @@
 #include <vector>
 #include <span>
 
-class CardDeck;
+struct CardDeck;
 class Player;
+class CardType;
 
 template<typename RET>
 struct Condition{
   virtual RET operator()(const CardDeck&) const{return 1;}
 };
-using Requirement = Condition<bool>;
-using Multiplier = Condition<int>;
 
-struct DefaultMultiplier : Multiplier
+
+// using Requirement = Condition<bool>;
+// using multiplier = Condition<int>;
+
+struct Multiplier : Condition<int>
 {
-  int operator()(const CardDeck&) const{return 1;}
+  const int val;
+  Multiplier(int val):val(val){}
+  int operator()(const CardDeck&) const{return val;}
 };
 
+// require ONE of the list
+struct Requirement;// : Condition<bool>
 
-class Gain
+
+
+struct Gain
 {
-  const Multiplier multimlier;
-public:  
-  const int amount;
-  Gain(int amount):amount(amount),multimlier(DefaultMultiplier{}){}
-  Gain(int amount, Multiplier multiplier):amount(amount),multimlier(multiplier){}
+  const std::vector<Condition<int>> multipliers;
+  const int base;
+  Gain(int base):
+    base(base),
+    multipliers({}){}
+  Gain(int base, std::initializer_list<Condition<int>> multipliers):
+    base(base),
+    multipliers(multipliers){}
 
-  int gain(const CardDeck& state) const;
+  int eval(const CardDeck& state) const;
 };
 
 typedef struct Tags
@@ -57,8 +70,8 @@ public:
   const char* name;
   const int cost;  
   const Tags tags; 
-  const std::vector<Gain> moneyRevenue; 
-  const std::vector<Gain> victoryPoints; 
+  const Gain moneyRevenue; 
+  const Gain victoryPoints; 
   
   // optional traits
   const std::vector<Requirement> requirements;
@@ -69,8 +82,8 @@ public:
   CardType(const char* name, 
            int cost,
            Tags tags, 
-           std::vector<Gain> moneyRevenue,
-           std::vector<Gain> victoryPoints,
+           Gain moneyRevenue,
+           Gain victoryPoints,
            // std::list<CardEffect> effects = {},
            std::vector<Requirement> requirements = {},
            bool one_per_player = false)
@@ -96,15 +109,19 @@ public:
 class Card
 {
 private:
+friend CardDeck;
 friend Player;
-  bool selected;
-  bool canBuild;
+  bool selected = false;
 public:
   const CardType* type;
-  Card(const CardType* type):type(type),selected(false),canBuild(false)
+  Card(const CardType* type):type(type),selected(false)
   {
     
   }
+  
+  Card(const Card& card) // Copy constructor, copy only type_ptr
+  :type(card.type){}
+  
   bool isSelected() const{return selected;} 
   
   bool operator==(Card& other){
@@ -136,15 +153,19 @@ public:
   void shuffle();
   size_t transfer(CardDeck& dst, std::size_t n);
   void add(Card card);
+  void add(const CardType* cardType);
   [[nodiscard]] Card pop();
   size_t size() const;
+
+  void unselect_all();
   
   int count_selected() const;
   std::vector<const CardType*> view_selected() const;
-  std::vector<const CardType*> pop_selected();
+  void pop_selected(CardDeck& dest);
+  void pop_selected(const CardType*& dest);
 
     
-  int sumGain() const;
+  int sumMoney() const;
   int sumVictory() const;
 };
 
@@ -156,17 +177,18 @@ struct CardPool
   
   void shuffleDiscard();
 
-  void push_discarded(const CardType* type);
+  void discard_card(const CardType* type);
   void take(CardDeck& dst, std::size_t n);
 };
 
 enum class PlayerState{
   DISCARD_2,
   SELECT_CARD,
+  RESIGN_BONUS_SELECT,
   SELECT_PAYMENT,
   UPDATE_STATS,
   FINISHED
-}; 
+};
 
 class Player
 {
@@ -175,6 +197,7 @@ class Player
     
     CardDeck handDeck;
     CardDeck builtArea;
+    CardDeck eventSelectDeck;
     
     int victoryPoints{0};
     int currentIncome{0};
@@ -186,10 +209,9 @@ class Player
     bool canProgress = false;
     bool eval_can_progress();
   public:
-    Player(CardPool& masterPool, CardDeck& deck):masterPool(masterPool),handDeck(deck),builtArea(){}
-    Player(CardPool& masterPool):masterPool(masterPool),handDeck(),builtArea(){}
+    Player(CardPool& masterPool):masterPool(masterPool),handDeck(),builtArea(),eventSelectDeck(){}
+    Player(CardPool& masterPool, CardDeck& deck):Player(masterPool){handDeck = deck;}
     
-    void play(Card& card);
     void draw_from(CardPool& src, std::size_t n);
 
     // non mutable return
@@ -204,25 +226,41 @@ class Player
     
     // mutable return 
     CardDeck& get_hand();
+    CardDeck& get_event_select();
 
     void progress();
     void select_card(Card& card);
-    void unselect_all();
+    void pass();
     
     void cancel_select_mode();
     
-    void print_hand() const;
+    // void print_hand() const;
 };
 
 
 
-// template<int x, int y, int z>
-// struct TagMultiplier : Multiplier{
-//   virtual int operator()(const CardDeck& state) const
-//   {
-//     int res = 0;
-//     for(const Card& card : state.lookup())
-//       res += card.type->tags * Tags{x,y,z};
-//     return 1;  
-//   }
-// }; 
+struct Requirement : Condition<bool>
+{
+  const std::vector<const CardType*> reqs;
+  Requirement(std::vector<const CardType*> req):reqs(req){}
+  bool operator()(const CardDeck& deck) const
+  {
+    for(const CardType* req : reqs)
+      for(const Card& card : deck.lookup())
+        if(card.type == req)
+        return true;
+    return false;
+  }
+};
+
+struct TagMultiplier : Condition<int>{
+  const Tags reqs;
+  TagMultiplier(Tags tags):reqs(tags){}
+  int operator()(const CardDeck& state) const
+  {
+    int res = 0;
+    for(const Card& card : state.lookup())
+      res += card.type->tags * reqs;
+    return res;  
+  }
+}; 
