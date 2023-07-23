@@ -308,6 +308,7 @@ struct PerBuild : Condition<int>{
     return res - amount; // munus one for itself 
   }
 };
+
 // @TODO
 struct PerGameBuild : Condition<int>{
   const int amount;

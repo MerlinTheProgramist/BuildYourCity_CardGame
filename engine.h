@@ -8,7 +8,8 @@ public:
   
   const CardSet masterSet = {
     // cards that will not generate in normal deck
-    {0, {"Architect",     0, {0,0,0}, {1}, {0}, {}, true, 0}},
+    {0, {"Architect",         0, {0,0,0}, {1}, {0}, {}, true, 0}},
+    // {"Construction crew",  1, {0,0,0}, {0}, {0}, } 
     // normal cards, with no additional effects
     {6, {"House",             1, {0,0,0}, {1}, {0}}},
     {4, {"CarPark",           0, {1,1,1}, {0}, {0}}},
@@ -43,9 +44,7 @@ public:
     {2, {"Shopping centre",   7, {0,3,0}, {2}, {0, PerTag{{0,1,0}}}}},
     {2, {"University",        5, {0,0,1}, {0}, {4, PerBuild{1,"School"}}}},
     {6, {"Villa",             4, {0,0,0}, {0}, {3, PerBuild{1,"Villa"}}}},
-    
-    {4, {"Bridge",            4, {1,0,0}, {1, PerBuild{1,"Highway"}}, {2}}},
-  
+    {4, {"Bridge",            4, {1,0,0}, {1, PerBuild{1,"Highway"}}, {2}}},  
     {3, {"Supermarket",       1, {1,1,0}, {1}, {0}, {{"House"},{"Estate"}, {"Traffic interchange"}}}},
     {2, {"Park and eat",      11,{2,0,0}, {0}, {0, PerTag{{1,0,0}},PerEnemyTag{{1,0,0}}}}},
     {4, {"Office",            2, {0,0,0}, {1, WithBuild{1, "Tower block"}}, {2}}},
@@ -63,7 +62,9 @@ public:
     {1, {"Coach station",     1, {0,1,1}, {0, WithBuild{1, "Supermarket"}}, {1}}},
     {1, {"Research centre",   4, {0,0,0}, {1}, {2, PerGameBuild{2, "University"}}}},
 };
+  
 const CardType* architectCardType = &masterSet.begin()->second;
+
 private:
   CardPool masterPool;
   
@@ -83,7 +84,7 @@ private:
   }
 public:
   
-  GameEngine(int player_num , size_t starting_cards = 7)
+  GameEngine(int player_num)
   {
     masterPool.avaliable = CardDeck(masterSet);
     masterPool.avaliable.shuffle();
@@ -91,7 +92,8 @@ public:
     for(int i=0;i<player_num;i++)
     {            
       players.push_back(Player(masterPool));
-      players.back().draw_from(masterPool, starting_cards);
+      // @RULES each player starts with 7 cards
+      players.back().draw_from(masterPool, 7);
       players.back().get_hand().add(architectCardType);
     }
     startRound();
