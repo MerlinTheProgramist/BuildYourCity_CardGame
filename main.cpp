@@ -41,19 +41,19 @@ void generateCardTex(const CardType& type)
     // Main Label
     {
     const int fontSize = 15;
-    int LabelOffset = MeasureText(type.name, fontSize)/2;
-    ImageDrawText(&cardImage, type.name, width/2-LabelOffset, 15, fontSize, BLACK);
+    int LabelOffset = MeasureText(type.name.c_str(), fontSize)/2;
+    ImageDrawText(&cardImage, type.name.c_str(), width/2-LabelOffset, 15, fontSize, BLACK);
     } 
 
     // Symbols
     {    
     const int fontSize = 15;
     int offset =0; 
-    for(int i=0;i<type.tags.Transport;++i, offset+=fontSize+10)    
+    for(std::uint8_t i=0;i<type.tags.Transport;++i, offset+=fontSize+10)    
         ImageDrawText(&cardImage, ".[]}.", 10, 50+offset, fontSize, ORANGE);
-    for(int i=0;i<type.tags.Shopping;++i, offset+=fontSize+10)    
+    for(std::uint8_t i=0;i<type.tags.Shopping;++i, offset+=fontSize+10)    
         ImageDrawText(&cardImage, "*\\./", 10, 50+offset, fontSize, GREEN);
-    for(int i=0;i<type.tags.Recreation;++i, offset+=fontSize+10)    
+    for(std::uint8_t i=0;i<type.tags.Recreation;++i, offset+=fontSize+10)    
         ImageDrawText(&cardImage, "_|_",   10, 50+offset, fontSize, BLUE);
     }
         
@@ -81,6 +81,10 @@ bool Button(Rectangle rec, Color color, const char* text, int fontSize, Color fo
             CheckCollisionPointRec(GetMousePosition(), rec);
 }
 
+inline void DrawCard(Texture cardTex, Vector2 pos, float rotation=0,float scale=1, Color tint=WHITE)
+{
+    DrawTextureEx(cardTex,pos,rotation,scale,tint);
+}
 
 void DrawUI(Player& player)
 {
@@ -116,7 +120,6 @@ void DrawUI(Player& player)
     const Rectangle buttonRect1{GetScreenWidth()-400.f, 200.f, 200,100}; 
     const Rectangle buttonRect2{buttonRect1.x, buttonRect1.y+buttonRect1.height+yOffset, buttonRect1.width, buttonRect1.height};
     
-    char* statusText = nullptr;
     // depended on player state
     switch(player.get_state())
     {
@@ -150,7 +153,7 @@ void DrawUI(Player& player)
     {
         
         const auto toBeBuilt = player.view_toBeBuild();
-        DrawStatus(TextFormat("Select %d cards to pay for %s", toBeBuilt->cost, toBeBuilt->name));
+        DrawStatus(TextFormat("Select %d cards to pay for %s", toBeBuilt->cost, toBeBuilt->name.c_str()));
 
         if(Button(buttonRect1, GREEN, " Pay ", 20, WHITE, player.can_progress()))
         {
@@ -182,10 +185,10 @@ const CardType* ShowHand(Vector2 pos, int spread, Player& player)
     Card* clicked = nullptr;
      
     int cardX = (int)pos.x - ((player.get_hand().size()-1)*cardOffset)/2 - (int)CARD_SIZE.x/2;
+
     for(Card& card : player.get_hand().get_cards())
     {
         const Rectangle cardRect = {(float)cardX, pos.y-CARD_SIZE.y/2, CARD_SIZE.x, CARD_SIZE.y};
-        const float cardScale = 1;
         const Color cardTint = (card.isSelected())?GREEN:WHITE;
         const float rotation = (card.isSelected())?20:0;
         // mouse collition
@@ -286,7 +289,7 @@ void DrawCardFaceDown(int n)
 
 }
 
-bool DrawCardPile(Vector2 pos, int spread=10, int n = 3)
+bool DrawCardPile(Vector2 pos, int n = 3, int spread=10)
 {    
     bool collide = false;
     for(int offset = 0;offset<n;offset++)
@@ -318,7 +321,6 @@ int main()
     GameEngine gameState(1);
 
     // Generate Textures
-    generateCardTex(gameState.architectCardType);
     for(const auto& cardType : gameState.masterSet)
         generateCardTex(cardType.second);
 
@@ -336,7 +338,6 @@ int main()
         const Vector2 screenCenter = {(float)GetScreenWidth()/2,(float)GetScreenHeight()/2};
         
         auto& currentPlayer = gameState.getCurrentPlayer(); 
-        auto& hand = currentPlayer.get_hand();
         
         // Draw
         //----------------------------------------------------------------------------------
@@ -344,7 +345,15 @@ int main()
 
             ClearBackground(GRAY);
             
-            DrawCardPile({(float)GetScreenWidth()-CARD_SIZE.x*1.5f,(float)GetScreenHeight()/2});
+            DrawCardPile(
+                {(float)GetScreenWidth()-CARD_SIZE.x*1.5f,screenCenter.y-CARD_SIZE.y*0.5f},
+                std::min(4, gameState.masterDeckSize())
+            );
+        
+            DrawCardPile(
+                {(float)GetScreenWidth()-CARD_SIZE.x*3.5f,screenCenter.y-CARD_SIZE.y*0.5f},
+                std::min(4, gameState.discardedDeckSize())
+            );
             const CardType* zoom = ShowHand(
                 {screenCenter.x, GetScreenHeight()-CARD_SIZE.y/2-20},
                 -40, 

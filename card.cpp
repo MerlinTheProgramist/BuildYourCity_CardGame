@@ -27,7 +27,7 @@ bool CardType::canBuild(const Player& state) const
   if(max_one_per_player)
   {
     // check if player already owns this
-    for(const Card card : state.built_view().lookup())
+    for(const Card& card : state.built_view().lookup())
       if(card.type == this)
         return false;
   }
@@ -195,7 +195,7 @@ void Player::progress()
         //@RULES add cards revenue to hand
         masterPool.take(        
           handDeck,
-          builtArea.sumMoney()
+          currentIncome = builtArea.sumMoney()
         );
         state = PlayerState::FINISHED;
     }
@@ -216,10 +216,14 @@ void Player::pass()
 
   //@RULES give player 5 to choose 1 from
   masterPool.take(eventSelectDeck, 5);
-
-  state = PlayerState::RESIGN_BONUS_SELECT;
+  if(eventSelectDeck.size()==0)
+    // if cant draw more cards
+    state = PlayerState::UPDATE_STATS;
+  else
+    state = PlayerState::RESIGN_BONUS_SELECT;
   toBeBuild = nullptr;
 }
+
 
 bool Player::eval_can_progress()
 {

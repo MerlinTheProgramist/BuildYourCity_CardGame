@@ -3,7 +3,9 @@
 #include <cmath>
 #include <cstddef>
 #include <algorithm>
+#include <cstdint>
 #include <functional>
+#include <initializer_list>
 #include <list>
 #include <random>
 #include <raylib.h>
@@ -39,23 +41,24 @@ struct Requirement;// : Condition<bool>
 
 struct Gain
 {
-  const std::vector<Condition<int>> multipliers;
   const int base;
+  const std::vector<Condition<int>> multipliers;
   Gain(int base):
     base(base),
     multipliers({}){}
-  Gain(int base, std::initializer_list<Condition<int>> multipliers):
+  template<typename... T>
+  Gain(int base, T... multipliers):
     base(base),
-    multipliers(multipliers){}
+    multipliers{multipliers...}{}
 
   int eval(const CardDeck& state) const;
 };
 
 typedef struct Tags
 {
-  unsigned Transport {0};
-  unsigned Recreation{0};
-  unsigned Shopping  {0};
+  std::uint8_t Transport {0};
+  std::uint8_t Recreation{0};
+  std::uint8_t Shopping  {0};
 
   int operator* (Tags other) const
   {
@@ -63,11 +66,10 @@ typedef struct Tags
   }
 } Tags;
 
-class CardType
+struct CardType
 {
-public:
   // standard parameters 
-  const char* name;
+  const std::string name;
   const int cost;  
   const Tags tags; 
   const Gain moneyRevenue; 
@@ -78,15 +80,16 @@ public:
   // const std::list<CardEffect> special_effects;
   const bool max_one_per_player;
 
-public: 
-  CardType(const char* name, 
+  const int value;
+  CardType(const std::string& name, 
            int cost,
            Tags tags, 
            Gain moneyRevenue,
            Gain victoryPoints,
            // std::list<CardEffect> effects = {},
-           std::vector<Requirement> requirements = {},
-           bool one_per_player = false)
+           std::initializer_list<Requirement> requirements = {},
+           bool one_per_player = false,
+           int value = 1)
   : name(name),
     cost(cost),
     tags(tags),
@@ -94,7 +97,8 @@ public:
     victoryPoints(victoryPoints),
     requirements(requirements),
     // special_effects(effects),
-    max_one_per_player(one_per_player)
+    max_one_per_player(one_per_player),
+    value(value)
   {
     
   }
@@ -108,16 +112,14 @@ public:
 
 class Card
 {
-private:
 friend CardDeck;
 friend Player;
-  bool selected = false;
 public:
   const CardType* type;
-  Card(const CardType* type):type(type),selected(false)
-  {
-    
-  }
+private:
+  bool selected = false;
+public:
+  Card(const CardType* type):type(type),selected(false){}
   
   Card(const Card& card) // Copy constructor, copy only type_ptr
   :type(card.type){}
@@ -125,14 +127,28 @@ public:
   bool isSelected() const{return selected;} 
   
   bool operator==(Card& other){
-    return &type == &other.type;
+    return type == other.type;
+  }
+  bool operator==(const CardType* other_type){
+    return type == other_type;
   }
 };
 
 
 using CardSet = std::vector<std::pair<std::size_t, CardType>>;
 
-class CardDeck
+class CardCollection
+{
+  
+};
+
+class cardHand : CardCollection
+{
+
+};
+
+
+class CardDeck : CardCollection
 {
   std::list<Card> cards;
 
@@ -156,6 +172,7 @@ public:
   void add(const CardType* cardType);
   [[nodiscard]] Card pop();
   size_t size() const;
+  int evauate() const;
 
   void unselect_all();
   
@@ -198,7 +215,7 @@ class Player
     CardDeck handDeck;
     CardDeck builtArea;
     CardDeck eventSelectDeck;
-    
+      
     int victoryPoints{0};
     int currentIncome{0};
   
@@ -209,7 +226,11 @@ class Player
     bool canProgress = false;
     bool eval_can_progress();
   public:
-    Player(CardPool& masterPool):masterPool(masterPool),handDeck(),builtArea(),eventSelectDeck(){}
+    Player(CardPool& masterPool):
+      masterPool(masterPool),
+      handDeck(),
+      builtArea(),
+      eventSelectDeck(){}
     Player(CardPool& masterPool, CardDeck& deck):Player(masterPool){handDeck = deck;}
     
     void draw_from(CardPool& src, std::size_t n);
@@ -228,12 +249,13 @@ class Player
     CardDeck& get_hand();
     CardDeck& get_event_select();
 
+    // action
     void progress();
     void select_card(Card& card);
     void pass();
     
     void cancel_select_mode();
-    
+  
     // void print_hand() const;
 };
 
@@ -241,21 +263,20 @@ class Player
 
 struct Requirement : Condition<bool>
 {
-  const std::vector<const CardType*> reqs;
-  Requirement(std::vector<const CardType*> req):reqs(req){}
+  const std::string name;
+  Requirement(const std::string& name):name(name){}
   bool operator()(const CardDeck& deck) const
   {
-    for(const CardType* req : reqs)
       for(const Card& card : deck.lookup())
-        if(card.type == req)
+        if(card.type->name == name)
         return true;
     return false;
   }
 };
 
-struct TagMultiplier : Condition<int>{
+struct PerTag : Condition<int>{
   const Tags reqs;
-  TagMultiplier(Tags tags):reqs(tags){}
+  PerTag(Tags taqs):reqs(taqs){}
   int operator()(const CardDeck& state) const
   {
     int res = 0;
@@ -264,3 +285,51 @@ struct TagMultiplier : Condition<int>{
     return res;  
   }
 }; 
+
+// @TODO 
+struct PerEnemyTag : Condition<int>{
+  const Tags reqs;
+  PerEnemyTag(Tags taqs):reqs(taqs){}
+  int operator()(const CardDeck& state) const
+  {
+    return 0;
+  }
+}; 
+
+struct PerBuild : Condition<int>{
+  const int amount;
+  const std::string name;
+  PerBuild(int amount, const std::string& name):amount(amount),name(name){}
+  int operator()(const CardDeck& state) const
+  {
+    int res = 0;
+    for(const Card& card : state.lookup())
+      if(card.type->name == name) res += amount;
+    return res - amount; // munus one for itself 
+  }
+};
+// @TODO
+struct PerGameBuild : Condition<int>{
+  const int amount;
+  const std::string name;
+  PerGameBuild(int amount, const std::string& name):amount(amount),name(name){}
+  int operator()(const CardDeck& state) const
+  {
+    return 0;
+  }
+};
+
+struct WithBuild : Condition<int>{
+  const int amount;
+  const std::string name;
+  WithBuild(int amount, const std::string& name):amount(amount),name(name){}
+  int operator()(const CardDeck& state) const
+  {
+    int res = 0;
+    for(const Card& card : state.lookup())
+      if(card.type->name == name) return amount;
+    return 0;
+  }
+};
+
+
