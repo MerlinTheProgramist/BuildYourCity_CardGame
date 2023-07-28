@@ -5,8 +5,58 @@
 class GameEngine
 {
 public:
+static const CardSet masterSet;  
+
+const CardType* architectCardType = &masterSet.begin()->second;
+
+private:
+  CardPool masterPool;
   
-  const CardSet masterSet = {
+  std::vector<Player> players;
+
+  int round{0};
+
+  
+  void startRound()
+  {
+    for(auto&& p : players) 
+      if(p.get_state()==PlayerState::FINISHED)
+        p.progress();
+    round++;
+  }
+public:
+  
+  GameEngine(int player_num)
+  {
+    masterPool.avaliable = CardDeck(masterSet);
+    masterPool.avaliable.shuffle();
+    
+    for(int i=0;i<player_num;i++)
+    {            
+      players.push_back(Player(masterPool));
+      // @RULES each player starts with 7 cards
+      players.back().draw_from(masterPool, 7);
+      players.back().get_hand().add(architectCardType);
+    }
+    startRound();
+  }
+
+  int masterDeckSize(){return masterPool.avaliable.size();}
+  int discardedDeckSize(){return masterPool.discarded.size();}
+  
+  Player& getPlayer(int n){return players[n];}
+  // Player& getCurrentPlayer()
+  // {
+  //   if(currentPlayer->get_state() == PlayerState::FINISHED)
+  //     if(++currentPlayer == players.end())  // if this is the last player
+  //       startRound();
+  //   return *currentPlayer;
+  // }
+
+};
+
+
+const CardSet GameEngine::masterSet = {
     // cards that will not generate in normal deck
     {0, {"Architect",         0, {0,0,0}, {1}, {0}, {}, true, 0}},
     // {"Construction crew",  1, {0,0,0}, {0}, {0}, } 
@@ -61,54 +111,4 @@ public:
     {1, {"Tube",              11,{0,0,0}, {0}, {0,PerTag{{0,0,1}},PerEnemyTag{{0,0,1}}}}},
     {1, {"Coach station",     1, {0,1,1}, {0, WithBuild{1, "Supermarket"}}, {1}}},
     {1, {"Research centre",   4, {0,0,0}, {1}, {2, PerGameBuild{2, "University"}}}},
-};
-  
-const CardType* architectCardType = &masterSet.begin()->second;
-
-private:
-  CardPool masterPool;
-  
-  std::vector<Player> players;
-  std::vector<Player>::iterator currentPlayer;
-
-  int round{0};
-
-  
-  void startRound()
-  {
-    for(auto&& p : players) 
-      if(p.get_state()==PlayerState::FINISHED)
-        p.progress();
-    currentPlayer = players.begin();
-    round++;
-  }
-public:
-  
-  GameEngine(int player_num)
-  {
-    masterPool.avaliable = CardDeck(masterSet);
-    masterPool.avaliable.shuffle();
-    
-    for(int i=0;i<player_num;i++)
-    {            
-      players.push_back(Player(masterPool));
-      // @RULES each player starts with 7 cards
-      players.back().draw_from(masterPool, 7);
-      players.back().get_hand().add(architectCardType);
-    }
-    startRound();
-  }
-
-  int masterDeckSize(){return masterPool.avaliable.size();}
-  int discardedDeckSize(){return masterPool.discarded.size();}
-  
-  Player& getPlayer(int n);
-  Player& getCurrentPlayer()
-  {
-    if(currentPlayer->get_state() == PlayerState::FINISHED)
-      if(++currentPlayer == players.end())  // if this is the last player
-        startRound();
-    return *currentPlayer;
-  }
-
 };

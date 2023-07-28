@@ -40,6 +40,7 @@ namespace net_frame
       // Check if datatype can be serialized
       static_assert(std::is_standard_layout<DataType>::value, "Data is too complex to be serialized");
       
+      
       size_t prev_size = msg.body.size();
 
       // resize vector

@@ -136,6 +136,7 @@ public:
 
 
 using CardSet = std::vector<std::pair<std::size_t, CardType>>;
+using cardIdT = size_t;
 
 class CardCollection
 {
@@ -166,6 +167,8 @@ public:
   
   const std::list<Card>& lookup() const;
   std::list<Card>& get_cards();
+  std::vector<cardIdT> get_card_ids(const CardSet& offset) const;
+
   void shuffle();
   size_t transfer(CardDeck& dst, std::size_t n);
   void add(Card card);
@@ -252,6 +255,7 @@ class Player
     // action
     void progress();
     void select_card(Card& card);
+    void select_card(cardIdT id);
     void pass();
     
     void cancel_select_mode();

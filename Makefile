@@ -1,7 +1,7 @@
 
 FLAGS := 
 
-debug: FLAGS := ${FLAGS} -Wall -gdwarf
+debug: FLAGS := ${FLAGS} -Wall -ggdb
 debug: all
 
 release: FLAGS := ${FLAGS} -O2
@@ -13,7 +13,5 @@ engine:
 	g++ card.cpp ${FLAGS} -I. -c -o ./build/engine.o 
 
 exe:
-	g++ main.cpp ./build/engine.o ${FLAGS} -I. -lraylib -o ./build/run
+	g++ client.cpp ./libraries/rlImGui/rlImGui.cpp ./build/engine.o ${FLAGS} -I. -I./include -lraylib -limgui -o ./build/run -std=c++20
 
-# debug:
-# 	@./build/run

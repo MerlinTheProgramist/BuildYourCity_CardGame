@@ -274,7 +274,7 @@ namespace net_frame{
               if(m_nHandshakeIn == m_nHandshakeCheck)
               {
                 // Client has provided validation solution
-                std::cout << "Client Validated" << std::endl;
+                std::cout << "[SERVER] Client Validated" << std::endl;
                 server->OnClientValidated(this->shared_from_this());
 
                 // now prime the Read

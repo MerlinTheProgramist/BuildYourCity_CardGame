@@ -45,6 +45,16 @@ std::list<Card>& CardDeck::get_cards()
   return cards;
 }
 
+std::vector<cardIdT> CardDeck::get_card_ids(const CardSet& offset) const
+{
+  std::vector<cardIdT> res;
+
+  for(const Card& card : lookup())
+  {
+    res.emplace_back((std::pair<std::size_t, CardType>*)(card.type - sizeof(size_t)) - &offset[0]);
+  }
+  return res;
+}
 
 std::random_device rd;
 std::mt19937 g(rd());
@@ -256,6 +266,12 @@ bool Player::eval_can_progress()
 }
 
 
+void Player::select_card(cardIdT id)
+{ 
+  auto card = get_hand().get_cards().begin();
+  std::advance(card, id);
+  select_card(*card);
+}
 
 void Player::select_card(Card& card)
 {
