@@ -10,9 +10,9 @@
 const Vector2 CARD_SIZE = {200,300};
 const float CARD_ZOOM_SCALE = 2;
 
-Texture2D cardReversImg;
-std::unordered_map<const CardType*, Texture2D> cardImages;
-void generateCardTex(const CardType& type)
+static Texture2D cardReversImg;
+static std::unordered_map<const CardType*, Texture2D> cardImages;
+static void generateCardTex(const CardType& type)
 {    
     const int width = CARD_SIZE.x, height = CARD_SIZE.y;
     Image cardImage = GenImageColor(width, height, RAYWHITE);
@@ -69,7 +69,7 @@ void generateCardTex(const CardType& type)
     cardImages.insert({&type, LoadTextureFromImage(cardImage)});
 }
 
-bool Button(Rectangle rec, Color color, const char* text, int fontSize, Color fontColor, bool active = true)
+static bool Button(Rectangle rec, Color color, const char* text, int fontSize, Color fontColor, bool active = true)
 {
     DrawRectangleRounded(rec, 3, 10, (active)?color:Color{220,220,220,255});
     const Vector2 textSize = MeasureTextEx(GetFontDefault(), text, fontSize, 1);
@@ -85,7 +85,7 @@ inline void DrawCard(Texture cardTex, Vector2 pos, float rotation=0,float scale=
     DrawTextureEx(cardTex,pos,rotation,scale,tint);
 }
 
-void DrawUI(Player& player)
+static void DrawGameUI(Player& player)
 {
     const Color UI_BG    = Color{94,123,163,255};
     const Color UI_BG_HI = Color{71,126,204,255};
@@ -183,9 +183,9 @@ const CardType* ShowHand(Vector2 pos, int spread, Player& player)
 
     Card* clicked = nullptr;
      
-    int cardX = (int)pos.x - ((player.get_hand().size()-1)*cardOffset)/2 - (int)CARD_SIZE.x/2;
+    int cardX = (int)pos.x - ((player.handDeck.size()-1)*cardOffset)/2 - (int)CARD_SIZE.x/2;
 
-    for(Card& card : player.get_hand().get_cards())
+    for(Card& card : player.handDeck.get_cards())
     {
         const Rectangle cardRect = {(float)cardX, pos.y-CARD_SIZE.y/2, CARD_SIZE.x, CARD_SIZE.y};
         const Color cardTint = (card.isSelected())?GREEN:WHITE;
@@ -219,8 +219,8 @@ const CardType* ShowBuilt(Vector2 pos, int spread, const Player& player)
     constexpr float CARD_SCALE = 0.6;
     const int cardOffset = CARD_SIZE.x*CARD_SCALE + spread;
 
-    float cardX = (int)pos.x - ((player.built_view().size()-1)*cardOffset)/2.f - (CARD_SIZE.x/2*CARD_SCALE);
-    for(const Card& card : player.built_view().lookup())
+    float cardX = (int)pos.x - ((player.builtArea.size()-1)*cardOffset)/2.f - (CARD_SIZE.x/2*CARD_SCALE);
+    for(const Card& card : player.builtArea.lookup())
     {
         const Rectangle cardRect = {cardX, pos.y-CARD_SIZE.y/2*CARD_SCALE, CARD_SIZE.x*CARD_SCALE, CARD_SIZE.y*CARD_SCALE};
 
@@ -233,7 +233,7 @@ const CardType* ShowBuilt(Vector2 pos, int spread, const Player& player)
     return zoomedCard;
 }
 
-const CardType* ShowEventSelect(Vector2 pos, int spread, Player& player)
+static const CardType* ShowEventSelect(Vector2 pos, int spread, Player& player)
 {
     const Vector2 mPos = GetMousePosition();
     const CardType* zoomedCard = nullptr;
@@ -247,8 +247,8 @@ const CardType* ShowEventSelect(Vector2 pos, int spread, Player& player)
     // Darken the background
     DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), {0,0,0,100});
 
-    float cardX = (int)pos.x - ((player.get_event_select().size()-1)*cardOffset)/2.f - (CARD_SIZE.x/2*CARD_SCALE);
-    for(Card& card : player.get_event_select().get_cards())
+    float cardX = (int)pos.x - ((player.eventSelectDeck.size()-1)*cardOffset)/2.f - (CARD_SIZE.x/2*CARD_SCALE);
+    for(Card& card : player.eventSelectDeck.get_cards())
     {
         const Rectangle cardRect = {cardX, pos.y-CARD_SIZE.y/2*CARD_SCALE, CARD_SIZE.x*CARD_SCALE, CARD_SIZE.y*CARD_SCALE};
         const Color cardTint = (card.isSelected())?GREEN:WHITE;
@@ -274,7 +274,7 @@ const CardType* ShowEventSelect(Vector2 pos, int spread, Player& player)
     return zoomedCard;
 }
 
-void DrawZoom(const CardType* card)
+static void DrawZoom(const CardType* card)
 {
     // Darken the screen
     DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), {0,0,0,100});
@@ -283,7 +283,7 @@ void DrawZoom(const CardType* card)
     DrawTextureEx(cardImages.at(card), centerCard, 0,  CARD_ZOOM_SCALE, WHITE);
 }
 
-bool DrawCardPile(Vector2 pos, int n = 3, int spread=10)
+static bool DrawCardPile(Vector2 pos, int n = 3, int spread=10)
 {    
     bool collide = false;
     for(int offset = 0;offset<n;offset++)
@@ -296,8 +296,17 @@ bool DrawCardPile(Vector2 pos, int n = 3, int spread=10)
     return collide;
 }
 
+static void LoadTextures()
+{
+    for(const auto& cardType : GameEngine::masterSet)
+        generateCardTex(cardType.second);
+    Image cardBackPattern = LoadImage("./textures/cardReverse.png");
+    Image cardBackImage = ImageFromImage(cardBackPattern, {0,0,CARD_SIZE.x, CARD_SIZE.y});
+    ImageDrawRectangleLines(&cardBackImage, Rectangle{0,0,CARD_SIZE.x, CARD_SIZE.y}, 4, WHITE);
+    cardReversImg = LoadTextureFromImage(cardBackImage);  
+}
 
-
+#ifdef OFFLINE
 int main()
 {
     const int screenWidth = GetScreenWidth();
@@ -315,16 +324,7 @@ int main()
     GameEngine gameState(1);
 
     // Generate Textures
-    for(const auto& cardType : gameState.masterSet)
-        generateCardTex(cardType.second);
-
-    {
-        Image cardBackPattern = LoadImage("./textures/cardReverse.png");
-        Image cardBackImage = ImageFromImage(cardBackPattern, {0,0,CARD_SIZE.x, CARD_SIZE.y});
-        ImageDrawRectangleLines(&cardBackImage, Rectangle{0,0,CARD_SIZE.x, CARD_SIZE.y}, 4, WHITE);
-        cardReversImg = LoadTextureFromImage(cardBackImage);   
-    }
-    
+    LoadTextures();    
 
     // Main game loop
     while (!WindowShouldClose())    // Detect window close button or ESC key
@@ -370,7 +370,7 @@ int main()
             if(zoom!=nullptr)
                 DrawZoom(zoom);
             
-            DrawUI(currentPlayer);
+            DrawGameUI(currentPlayer);
 
             // switch(currentPlayer.get_state())
             // {
@@ -398,3 +398,4 @@ int main()
 
     return 0;   
 }
+#endif

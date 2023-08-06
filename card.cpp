@@ -20,14 +20,14 @@ bool CardType::canBuild(const Player& state) const
   // check requirements
   for(auto req : requirements)
   {
-    if(req(state.hand_view()) == false) return false;
+    if(req(state.handDeck) == false) return false;
   }
 
   // check uniqness
   if(max_one_per_player)
   {
     // check if player already owns this
-    for(const Card& card : state.built_view().lookup())
+    for(const Card& card : state.builtArea.lookup())
       if(card.type == this)
         return false;
   }
@@ -100,6 +100,10 @@ void CardDeck::add(const CardType* cardType)
 {
   cards.push_back(Card{cardType});
 }
+void CardDeck::add(cardIdT id, const CardSet& offset)
+{
+  cards.push_back(Card{&(offset.begin() + id)->second});
+}
 
 size_t CardDeck::size() const{ return cards.size();}
 
@@ -131,8 +135,8 @@ void Player::draw_from(CardPool& src, std::size_t n)
   src.take(handDeck, n);
 }
 
-const CardDeck& Player::built_view()     const{return builtArea;}
-const CardDeck& Player::hand_view()      const{return handDeck;}
+// const CardDeck& Player::built_view()     const{return builtArea;}
+// const CardDeck& Player::hand_view()      const{return handDeck;}
 const CardType* Player::view_toBeBuild() const{assert(toBeBuild!=nullptr); return toBeBuild;}
 
 int Player::get_income()                 const{return currentIncome;}
@@ -141,8 +145,8 @@ int Player::get_money()                  const{return handDeck.size();}
 PlayerState Player::get_state()          const{return state;}
 bool Player::can_progress()              const{return canProgress;}
 
-CardDeck& Player::get_hand()             {return handDeck;}
-CardDeck& Player::get_event_select()     {return eventSelectDeck;}
+// CardDeck& Player::get_hand()             {return handDeck;}
+// CardDeck& Player::get_event_select()     {return eventSelectDeck;}
 
 void Player::cancel_select_mode()
 {
@@ -268,7 +272,7 @@ bool Player::eval_can_progress()
 
 void Player::select_card(cardIdT id)
 { 
-  auto card = get_hand().get_cards().begin();
+  auto card = handDeck.get_cards().begin();
   std::advance(card, id);
   select_card(*card);
 }

@@ -36,7 +36,7 @@ public:
       players.push_back(Player(masterPool));
       // @RULES each player starts with 7 cards
       players.back().draw_from(masterPool, 7);
-      players.back().get_hand().add(architectCardType);
+      players.back().handDeck.add(architectCardType);
     }
     startRound();
   }

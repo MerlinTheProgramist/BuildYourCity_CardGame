@@ -9,10 +9,8 @@
 #include <list>
 #include <random>
 #include <raylib.h>
-#include <sys/types.h>
 #include <type_traits>
 #include <vector>
-#include <span>
 
 struct CardDeck;
 class Player;
@@ -173,6 +171,7 @@ public:
   size_t transfer(CardDeck& dst, std::size_t n);
   void add(Card card);
   void add(const CardType* cardType);
+  void add(cardIdT id, const CardSet& offset);
   [[nodiscard]] Card pop();
   size_t size() const;
   int evauate() const;
@@ -212,12 +211,12 @@ enum class PlayerState{
 
 class Player
 {
-  private:
-    CardPool& masterPool;
-    
+  public:
     CardDeck handDeck;
     CardDeck builtArea;
     CardDeck eventSelectDeck;
+  private:
+    CardPool& masterPool;
       
     int victoryPoints{0};
     int currentIncome{0};
@@ -239,8 +238,8 @@ class Player
     void draw_from(CardPool& src, std::size_t n);
 
     // non mutable return
-    const CardDeck& built_view() const; 
-    const CardDeck& hand_view() const;
+    // const CardDeck& built_view() const; 
+    // const CardDeck& hand_view() const;
     const CardType* view_toBeBuild() const;
     int get_income() const;
     int get_victoryPoints() const;
@@ -249,8 +248,8 @@ class Player
     bool can_progress() const;
     
     // mutable return 
-    CardDeck& get_hand();
-    CardDeck& get_event_select();
+    // CardDeck& get_hand();
+    // CardDeck& get_event_select();
 
     // action
     void progress();

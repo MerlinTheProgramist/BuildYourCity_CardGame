@@ -151,7 +151,7 @@ protected:
         msg >> selectedId;
 
         // Check if id is valid
-        if(selectedId >= player.hand_view().size()){
+        if(selectedId >= player.handDeck.size()){
           std::cout << "[SERVER] Received cardId out of bounds ("<<selectedId<<"), from ["<< client->GetID() <<"]" << std::endl;
           return;
         }
@@ -218,5 +218,15 @@ protected:
     message startPlaying{GameMsg::Game_ClientState};
     startPlaying << ClientState::PLAYING;
     MessageAllClients(startPlaying);
+
+    for(auto client : clientRoster)
+    {
+      for(cardIdT cardId : client.second.player->handDeck.get_card_ids(GameEngine::masterSet))
+      {
+        message dealCard{GameMsg::Game_DealCards};
+        dealCard << cardId;
+        MessageClient(client.second.client.lock(), dealCard);
+      }
+    }
   }
 };

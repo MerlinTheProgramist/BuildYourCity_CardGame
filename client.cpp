@@ -4,6 +4,8 @@
 // UI
 #include <imgui.h>
 #include <unordered_map>
+#include "card.h"
+#include "engine.h"
 #include "libraries/rlImGui/rlImGui.h"
 
 #include "net_frame/client.h"
@@ -12,8 +14,11 @@
 
 #include "server.h"
 
+#include "ui.h"
+
 class GameClient : net_frame::client_intefrace<GameMsg>
 {
+  
 public:
   GameClient()
   {
@@ -29,6 +34,9 @@ public:
     rlImGuiSetup(true);
 
     ImGuiIO& io = ImGui::GetIO();
+
+    // Load Textures
+    LoadTextures();
     
     while(!WindowShouldClose())
     {
@@ -57,6 +65,12 @@ private:
   // GameState
   Client myPlayer{};
   std::unordered_map<uint32_t, EnemyView> otherPlayers;
+  struct
+  {
+    int masterDeckSize{};
+    int distardDeckSize{};
+  }publicInfo;
+  
 
 private:
   char ui_nickname[255];
@@ -151,11 +165,45 @@ private:
       return;
     }
 
-    
     ClearBackground(DARKGRAY);
 
-    // Draw the accual game
+    // Draw the acctual game
+    const Vector2 screenCenter = {(float)GetScreenWidth()/2,(float)GetScreenHeight()/2};
 
+    DrawCardPile(
+        {(float)GetScreenWidth()-CARD_SIZE.x*1.5f,screenCenter.y-CARD_SIZE.y*0.5f},
+        std::min(4, publicInfo.masterDeckSize)
+    );
+
+    DrawCardPile(
+        {(float)GetScreenWidth()-CARD_SIZE.x*3.5f,screenCenter.y-CARD_SIZE.y*0.5f},
+        std::min(4, publicInfo.distardDeckSize)
+    );
+    const CardType* zoom = ShowHand(
+        {screenCenter.x, GetScreenHeight()-CARD_SIZE.y/2-20},
+        -40, 
+        *myPlayer.player
+    );
+    {
+        auto new_zoom = ShowBuilt(
+            {screenCenter.x, screenCenter.y - CARD_SIZE.y/2},
+            10,
+            *myPlayer.player
+        );
+        zoom = (zoom==nullptr)?new_zoom:zoom;
+    
+        if(myPlayer.player->get_state() == PlayerState::RESIGN_BONUS_SELECT)
+            new_zoom = ShowEventSelect(screenCenter, -10, *myPlayer.player);
+        zoom = (zoom==nullptr)?new_zoom:zoom;
+    }
+
+    
+    if(zoom!=nullptr)
+        DrawZoom(zoom);
+    
+    DrawGameUI(*myPlayer.player);
+    
+    
   }
 private:
   void CheckMsg()
@@ -207,6 +255,15 @@ private:
           {
              uint32_t id;
              msg >> id >> otherPlayers[id].info.nickname;
+          }
+          break;
+
+          // Gameplay related
+          case GameMsg::Game_DealCards:
+          {
+              cardIdT cardType;
+              msg >> cardType;
+              myPlayer.player->handDeck.add(cardType, GameEngine::masterSet);   
           }
           break;
           
