@@ -11,6 +11,7 @@
 class GameServer : public net_frame::server_interface<GameMsg>
 {  
   
+  
 public:
   GameServer(uint16_t port, size_t maxPlayerCount=2)
   : net_frame::server_interface<GameMsg>(port)
@@ -18,10 +19,17 @@ public:
   , maxPlayerCount(maxPlayerCount)
   {
     Start();
+    updateThread = std::thread([&]()
+    {
+      for(;;) Update(-1, true);  // wait for next message
+    });
   }
 
   
 private:
+  // uodate loop thread
+  std::thread updateThread;
+  
   size_t maxPlayerCount;
   // Netrowking
   ServerStatus status{ServerStatus::WAITING_FOR_PLAYERS};
@@ -46,8 +54,8 @@ protected:
     std::cout << "Client validated call" << std::endl;
     // Send a custom message that tells the client he, can now communicate
     message msg{GameMsg::Client_Accepted};
-    MessageClient(client, msg);
-    // client->Send(msg);
+    // MessageClient(client, msg);
+    client->Send(msg);
   }
 
   void OnClientDisconnect(std::shared_ptr<Connection> client)
@@ -87,29 +95,30 @@ protected:
     {      
       case GameMsg::Client_RegisterWithServer:
       {
-        // receive client info from his message
-        PlayerInfo newInfo; 
-        clientRoster[client->GetID()].id = client->GetID();
-        msg >> newInfo;
-
-        std::cout << "Player with nick: " << newInfo.nickname << std::endl;
-
-        // bind to that client 
-        clientRoster[client->GetID()].info = newInfo;
-        clientRoster[client->GetID()].client = client;
         
+        // receive client info from his message
+        PlayerInfo newInfo{}; 
+        msg >> newInfo.nickname;
+
+        std::cout << "[SERVER] Player with nick: " << newInfo.nickname.data() << std::endl;
+
         // inform other players about this client joining the lobby
         message msgAddPlayer{GameMsg::Server_AddPlayer};
-        msgAddPlayer << newInfo << client->GetID();
+        msgAddPlayer << newInfo.nickname << client->GetID();
         MessageAllClients(msgAddPlayer, client);
 
         // Inform this player about the other players that have already been in the lobby
         for(const auto& cli : clientRoster)
         {
           message msgAddExistingPlayer{GameMsg::Server_AddPlayer};
-          msgAddExistingPlayer << cli;
+          msgAddExistingPlayer << cli.second.info.nickname << client->GetID();
           MessageClient(client, msgAddExistingPlayer);    
         }
+
+        // bind to that client 
+        clientRoster[client->GetID()].id = client->GetID();
+        clientRoster[client->GetID()].info = newInfo;
+        clientRoster[client->GetID()].client = client;
 
         // check if server is full
         if(clientRoster.size() == maxPlayerCount)

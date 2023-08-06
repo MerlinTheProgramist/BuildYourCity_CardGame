@@ -14,8 +14,6 @@
 
 class GameClient : net_frame::client_intefrace<GameMsg>
 {
-  
-
 public:
   GameClient()
   {
@@ -44,6 +42,10 @@ public:
       EndDrawing();
     }
 
+    // Notify server that we are disconnecting
+    message disconnect{GameMsg::Client_UnreginsterWithServer};
+    Send(disconnect);
+    
     Disconnect();
     rlImGuiShutdown();
   }
@@ -57,6 +59,7 @@ private:
   std::unordered_map<uint32_t, EnemyView> otherPlayers;
 
 private:
+  char ui_nickname[255];
   std::string ui_ip_address{"localhost"};
   std::string ui_port{"60000"};
   std::string ui_server_port{"60000"};
@@ -79,11 +82,12 @@ private:
         ImGui::Begin("Menu", &open, flags);
     
         ImGui::Text("The Game!");
-        ImGui::InputTextWithHint("Nickname", "player1", &myPlayer.info.nickname[0], 255); 
+        ImGui::InputTextWithHint("Nickname", "player1", ui_nickname, sizeof(ui_nickname)); 
         ImGui::InputTextWithHint("server address", "255.255.255.255", &ui_ip_address[0], sizeof("000.000.000.000")); 
         ImGui::InputTextWithHint("server port", "60000", &ui_port[0], sizeof("00000"));
         if(ImGui::Button("Connect"))
         {
+            myPlayer.info.nickname = std::string(ui_nickname);
             if(Connect(ui_ip_address, static_cast<uint16_t>(std::stoi(ui_port))))
               state = ClientState::CONNECTING;
         }
@@ -92,6 +96,7 @@ private:
           
         if(ImGui::Button("Start server"))
         {
+          myPlayer.info.nickname = std::string(ui_nickname);
           uint16_t port = static_cast<uint16_t>(std::stoi(ui_server_port));
           size_t maxPlayers = static_cast<size_t>(std::stoi(ui_max_players));
 
@@ -169,7 +174,8 @@ private:
             state = ClientState::IN_LOBBY;
             std::cout << "Server Accepted you!" << std::endl;
             message msgSend{GameMsg::Client_RegisterWithServer};
-            msgSend << myPlayer.info;
+            std::cout << "Sending nickname: " << myPlayer.info.nickname.data() << " size:" << myPlayer.info.nickname.size() <<std::endl;
+            msgSend << myPlayer.info.nickname;
             Send(msgSend);
           }
           break;
@@ -200,10 +206,9 @@ private:
           case GameMsg::Server_AddPlayer:
           {
              uint32_t id;
-             PlayerInfo info;
-             msg >> id >> info;
-             otherPlayers[id].info = info;
+             msg >> id >> otherPlayers[id].info.nickname;
           }
+          break;
           
           case GameMsg::Client_RegisterWithServer:
           case GameMsg::Client_UnreginsterWithServer:
