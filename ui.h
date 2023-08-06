@@ -67,6 +67,8 @@ static void generateCardTex(const CardType& type)
     }
 
     cardImages.insert({&type, LoadTextureFromImage(cardImage)});
+
+    UnloadImage(cardImage);
 }
 
 static bool Button(Rectangle rec, Color color, const char* text, int fontSize, Color fontColor, bool active = true)
@@ -85,7 +87,14 @@ inline void DrawCard(Texture cardTex, Vector2 pos, float rotation=0,float scale=
     DrawTextureEx(cardTex,pos,rotation,scale,tint);
 }
 
-static void DrawGameUI(Player& player)
+enum UIAction{
+    PASS,
+    PROGESS, 
+    NOTHING
+};
+
+[[nodiscard]]
+static UIAction DrawGameUI(Player& player)
 {
     const Color UI_BG    = Color{94,123,163,255};
     const Color UI_BG_HI = Color{71,126,204,255};
@@ -127,7 +136,7 @@ static void DrawGameUI(Player& player)
         DrawStatus(" Select 2 cards to be discarded ");
 
         if(Button(buttonRect1, GREEN, " Discard 2 ", 20, WHITE, player.can_progress()))
-            player.progress();
+            return PROGESS;
     }
     break;
     case PlayerState::RESIGN_BONUS_SELECT:
@@ -135,7 +144,7 @@ static void DrawGameUI(Player& player)
         DrawStatus(" Select 1 card as a bonus ");
 
         if(Button(buttonRect1, GREEN, " Select ", 20, WHITE, player.can_progress()))
-            player.progress();
+            return PROGESS;
     }
     break;
     case PlayerState::SELECT_CARD:
@@ -143,9 +152,9 @@ static void DrawGameUI(Player& player)
         DrawStatus(" Select card to be built ");
 
         if(Button(buttonRect1, GREEN, " Build ", 20, WHITE, player.can_progress()))
-            player.progress();
+            return PROGESS;
         if(Button(buttonRect2, RED, " Pass ", 20, WHITE))
-            player.pass();
+            return PASS;
     }
     break;
     case PlayerState::SELECT_PAYMENT:
@@ -155,9 +164,7 @@ static void DrawGameUI(Player& player)
         DrawStatus(TextFormat("Select %d cards to pay for %s", toBeBuilt->cost, toBeBuilt->name.c_str()));
 
         if(Button(buttonRect1, GREEN, " Pay ", 20, WHITE, player.can_progress()))
-        {
-            player.progress();
-        }
+            return PROGESS;
         
         if(Button(buttonRect2, RED, " Cancel ", 20, WHITE))
         {
@@ -169,11 +176,11 @@ static void DrawGameUI(Player& player)
         break;
     }
     
-    
+    return NOTHING;
 }
 
 
-const CardType* ShowHand(Vector2 pos, int spread, Player& player)
+static const CardType* ShowHand(Vector2 pos, int spread, Player& player)
 {
     const Vector2 mPos = GetMousePosition();
     const int cardOffset = CARD_SIZE.x + spread;
@@ -210,7 +217,7 @@ const CardType* ShowHand(Vector2 pos, int spread, Player& player)
     return zoomedCard;    
 }
 
-const CardType* ShowBuilt(Vector2 pos, int spread, const Player& player)
+static const CardType* ShowBuilt(Vector2 pos, int spread, const Player& player)
 {
     const Vector2 mPos = GetMousePosition();
     const CardType* zoomedCard = nullptr;
@@ -298,12 +305,15 @@ static bool DrawCardPile(Vector2 pos, int n = 3, int spread=10)
 
 static void LoadTextures()
 {
-    for(const auto& cardType : GameEngine::masterSet)
+    for(const auto& cardType : GameEngine::masterSet.cards)
         generateCardTex(cardType.second);
     Image cardBackPattern = LoadImage("./textures/cardReverse.png");
     Image cardBackImage = ImageFromImage(cardBackPattern, {0,0,CARD_SIZE.x, CARD_SIZE.y});
     ImageDrawRectangleLines(&cardBackImage, Rectangle{0,0,CARD_SIZE.x, CARD_SIZE.y}, 4, WHITE);
     cardReversImg = LoadTextureFromImage(cardBackImage);  
+
+    UnloadImage(cardBackPattern);
+    UnloadImage(cardBackImage);
 }
 
 #ifdef OFFLINE

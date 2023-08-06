@@ -1,27 +1,24 @@
 #pragma once
 
 #include "card.h"
+#include <asio/thread_pool.hpp>
 
 class GameEngine
 {
 public:
 static const CardSet masterSet;  
 
-const CardType* architectCardType = &masterSet.begin()->second;
+const CardType* architectCardType = &masterSet.cards.begin()->second;
 
-private:
   CardPool masterPool;
-  
   std::vector<Player> players;
-
   int round{0};
-
+private:
   
   void startRound()
   {
     for(auto&& p : players) 
-      if(p.get_state()==PlayerState::FINISHED)
-        p.progress();
+      p.progress(masterPool, players);
     round++;
   }
 public:
@@ -33,7 +30,7 @@ public:
     
     for(int i=0;i<player_num;i++)
     {            
-      players.push_back(Player(masterPool));
+      players.push_back(Player());
       // @RULES each player starts with 7 cards
       players.back().draw_from(masterPool, 7);
       players.back().handDeck.add(architectCardType);
@@ -45,6 +42,19 @@ public:
   int discardedDeckSize(){return masterPool.discarded.size();}
   
   Player& getPlayer(int n){return players[n];}
+
+  bool progressIfAllDone()
+  {
+    for(Player& p : players)
+    {
+      if(p.get_state() != PlayerState::FINISHED)
+        return false;
+    }
+
+    startRound();
+    
+    return true;    
+  }
   // Player& getCurrentPlayer()
   // {
   //   if(currentPlayer->get_state() == PlayerState::FINISHED)
@@ -56,7 +66,7 @@ public:
 };
 
 
-const CardSet GameEngine::masterSet = {
+const CardSet GameEngine::masterSet{{
     // cards that will not generate in normal deck
     {0, {"Architect",         0, {0,0,0}, {1}, {0}, {}, true, 0}},
     // {"Construction crew",  1, {0,0,0}, {0}, {0}, } 
@@ -111,4 +121,4 @@ const CardSet GameEngine::masterSet = {
     {1, {"Tube",              11,{0,0,0}, {0}, {0,PerTag{{0,0,1}},PerEnemyTag{{0,0,1}}}}},
     {1, {"Coach station",     1, {0,1,1}, {0, WithBuild{1, "Supermarket"}}, {1}}},
     {1, {"Research centre",   4, {0,0,0}, {1}, {2, PerGameBuild{2, "University"}}}},
-};
+}};

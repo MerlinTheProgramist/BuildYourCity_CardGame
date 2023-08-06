@@ -56,6 +56,9 @@ public:
     
     Disconnect();
     rlImGuiShutdown();
+
+    
+    CloseWindow();
   }
 private:
   ClientState state{ClientState::IN_MENU};
@@ -129,6 +132,7 @@ private:
       break;
                 
       case ClientState::IN_LOBBY:
+      case ClientState::READY:
       {
         ImGui::SetNextWindowPos({300,300});
         ImGui::Begin("Lobby", &open, flags);
@@ -201,7 +205,23 @@ private:
     if(zoom!=nullptr)
         DrawZoom(zoom);
     
-    DrawGameUI(*myPlayer.player);
+    switch(DrawGameUI(*myPlayer.player))
+    {
+      case NOTHING: break;
+
+      case PROGESS: 
+      {
+          message progressRequest{GameMsg::Game_Progress};
+          Send(progressRequest);
+      }
+      break;
+      case PASS: 
+      {
+          message passRequest{GameMsg::Game_Pass};
+          Send(passRequest);
+      }
+      break;
+    }
     
     
   }
@@ -233,10 +253,10 @@ private:
             std::cout << "Server provided your id: " << myPlayer.id << std::endl;
           }
           break;
-          case GameMsg::Game_ClientState:
+          case GameMsg::Server_ClientState:
           {
             msg >> state;
-            std::cout << "Game state updated to: " << (int)(state) << std::endl; 
+            std::cout << "Game state updated to: " << (int)(state) << std::endl;
           }
           break;
           case GameMsg::Server_RemovePlayer:
@@ -266,6 +286,7 @@ private:
               myPlayer.player->handDeck.add(cardType, GameEngine::masterSet);   
           }
           break;
+
           
           case GameMsg::Client_RegisterWithServer:
           case GameMsg::Client_UnreginsterWithServer:

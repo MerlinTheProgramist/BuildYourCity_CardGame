@@ -143,21 +143,21 @@ protected:
       /***********************/
 
       // Select card
-      case GameMsg::Game_SelectCard:
-      {
-        Player& player = *clientRoster.at(client->GetID()).player; 
+      // case GameMsg::Game_SelectCard:
+      // {
+      //   Player& player = *clientRoster.at(client->GetID()).player; 
           
-        cardIdT selectedId;
-        msg >> selectedId;
+      //   cardIdT selectedId;
+      //   msg >> selectedId;
 
-        // Check if id is valid
-        if(selectedId >= player.handDeck.size()){
-          std::cout << "[SERVER] Received cardId out of bounds ("<<selectedId<<"), from ["<< client->GetID() <<"]" << std::endl;
-          return;
-        }
+      //   // Check if id is valid
+      //   if(selectedId >= player.handDeck.size()){
+      //     std::cout << "[SERVER] Received cardId out of bounds ("<<selectedId<<"), from ["<< client->GetID() <<"]" << std::endl;
+      //     return;
+      //   }
         
-        player.select_card(selectedId);
-      }
+      //   player.select_card(selectedId);
+      // }
 
       // no contents, server sends boolean
       // case GameMsg::Game_CanProgress:
@@ -171,21 +171,43 @@ protected:
       case GameMsg::Game_Progress:
       {
         Player& player = *clientRoster.at(client->GetID()).player; 
-        player.progress();
+        player.progress(engine.masterPool, engine.players);
 
         message updateState{GameMsg::Game_PlayerState};
         updateState << player.get_state();
         MessageClient(client, updateState);
+
+        if(engine.progressIfAllDone())
+        {
+            message endRound{GameMsg::Game_PlayerState};
+            MessageAllClients(endRound); 
+        }
+      }
+      break;
+      case GameMsg::Game_Pass:
+      {
+        Player& player = *clientRoster.at(client->GetID()).player; 
+        player.pass();
+
+        message updateState{GameMsg::Game_PlayerState};
+        updateState << player.get_state();
+        MessageClient(client, updateState);
+
+        if(engine.progressIfAllDone())
+        {
+            message endRound{GameMsg::Game_PlayerState};
+            endRound << engine.players[0].get_state(); // state of the first player, becuase all have the same state
+            MessageAllClients(endRound); 
+        }
       }
       break;
       
       // Unexpected for a server
-      case GameMsg::Game_ClientState:
+      case GameMsg::Server_ClientState:
       case GameMsg::Client_Accepted:
       case GameMsg::Client_AssignID:
       case GameMsg::Server_AddPlayer:
       case GameMsg::Server_RemovePlayer:
-      // case GameMsg::Clinet_LobbyFull:
       {
           std::cout << "[Server] Received unexpected request ["<< msg.header.id <<"] from: "<< client->GetID() << std::endl;
       }
@@ -196,37 +218,29 @@ protected:
   // called when game can be started 
   void StartGame()
   {
+    
+    // Reedem all players that the game has officially started
+    message startPlaying{GameMsg::Server_ClientState};
+    startPlaying << ClientState::PLAYING;
+    MessageAllClients(startPlaying);
+    
     // map player pointers from the engine to clientRoster with proper ids
     // so they can be accessed easly later
     for(int index{};index<clientRoster.size();++index)
     {
-      // bind client to player
+      // bind client to player, need to translate index to clientId
       auto id = clientRoster.begin();
       std::advance(id, index);
       clientRoster[id->first].player = &engine.getPlayer(index);
 
       // Deal cards to clients
       message startingCards{GameMsg::Game_DealCards};
-      startingCards << std::vector<size_t>{};//clientRoster[id->first].player->hand_view().get_card_ids(engine.masterSet); 
+      startingCards << clientRoster[id->first].player->handDeck.get_card_ids(engine.masterSet); 
       MessageClient(
         clientRoster[id->first].client.lock(), 
         startingCards
       );
     }
 
-    // Reedem all players that the game has officially started
-    message startPlaying{GameMsg::Game_ClientState};
-    startPlaying << ClientState::PLAYING;
-    MessageAllClients(startPlaying);
-
-    for(auto client : clientRoster)
-    {
-      for(cardIdT cardId : client.second.player->handDeck.get_card_ids(GameEngine::masterSet))
-      {
-        message dealCard{GameMsg::Game_DealCards};
-        dealCard << cardId;
-        MessageClient(client.second.client.lock(), dealCard);
-      }
-    }
   }
 };

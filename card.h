@@ -16,20 +16,25 @@ struct CardDeck;
 class Player;
 class CardType;
 
+struct ConditionArgument{
+  const CardDeck& that; 
+  const std::vector<Player>& other{};
+};
+
 template<typename RET>
 struct Condition{
   virtual RET operator()(const CardDeck&) const{return 1;}
 };
 
-
 // using Requirement = Condition<bool>;
 // using multiplier = Condition<int>;
 
-struct Multiplier : Condition<int>
+struct Multiplier
 {
-  const int val;
-  Multiplier(int val):val(val){}
-  int operator()(const CardDeck&) const{return val;}
+  const int amount{};
+  Multiplier(int val):amount(val){}
+  virtual int operator()(ConditionArgument) const
+  {return amount;}
 };
 
 // require ONE of the list
@@ -40,7 +45,7 @@ struct Requirement;// : Condition<bool>
 struct Gain
 {
   const int base;
-  const std::vector<Condition<int>> multipliers;
+  const std::vector<Multiplier> multipliers;
   Gain(int base):
     base(base),
     multipliers({}){}
@@ -49,7 +54,7 @@ struct Gain
     base(base),
     multipliers{multipliers...}{}
 
-  int eval(const CardDeck& state) const;
+  int eval(ConditionArgument arg) const;
 };
 
 typedef struct Tags
@@ -133,7 +138,20 @@ public:
 };
 
 
-using CardSet = std::vector<std::pair<std::size_t, CardType>>;
+struct CardSet{
+  std::vector<std::pair<std::size_t, CardType>> cards;
+
+  CardSet(std::vector<std::pair<std::size_t, CardType>> cards)
+  :cards(cards)
+  {
+    for(auto cardQ : cards)
+    {
+      
+    } 
+  }
+};
+
+
 using cardIdT = size_t;
 
 class CardCollection
@@ -149,12 +167,11 @@ class cardHand : CardCollection
 
 class CardDeck : CardCollection
 {
-  std::list<Card> cards;
-
 public:
+  std::list<Card> cards;
   CardDeck(const CardSet& set)
   {
-    for(auto&& type : set)
+    for(auto&& type : set.cards)
     {
        for(int i = type.first; i>=0;--i)
         cards.emplace_back(&type.second); 
@@ -184,8 +201,8 @@ public:
   void pop_selected(const CardType*& dest);
 
     
-  int sumMoney() const;
-  int sumVictory() const;
+  int sumMoney(const std::vector<Player>& otherDecks) const;
+  int sumVictory(const std::vector<Player>& otherDecks) const;
 };
 
 struct CardPool
@@ -216,7 +233,7 @@ class Player
     CardDeck builtArea;
     CardDeck eventSelectDeck;
   private:
-    CardPool& masterPool;
+    // CardPool& masterPool;
       
     int victoryPoints{0};
     int currentIncome{0};
@@ -228,12 +245,12 @@ class Player
     bool canProgress = false;
     bool eval_can_progress();
   public:
-    Player(CardPool& masterPool):
-      masterPool(masterPool),
+    Player(/*CardPool& masterPool*/):
+      // masterPool(masterPool),
       handDeck(),
       builtArea(),
       eventSelectDeck(){}
-    Player(CardPool& masterPool, CardDeck& deck):Player(masterPool){handDeck = deck;}
+    Player(/*CardPool& masterPool, */CardDeck& deck):/*Player(masterPool)*/handDeck(deck){}
     
     void draw_from(CardPool& src, std::size_t n);
 
@@ -252,7 +269,7 @@ class Player
     // CardDeck& get_event_select();
 
     // action
-    void progress();
+    void progress(CardPool& masterPool, const std::vector<Player>& otherDecks);
     void select_card(Card& card);
     void select_card(cardIdT id);
     void pass();
@@ -268,69 +285,79 @@ struct Requirement : Condition<bool>
 {
   const std::string name;
   Requirement(const std::string& name):name(name){}
-  bool operator()(const CardDeck& deck) const
-  {
-      for(const Card& card : deck.lookup())
+  bool operator()(const CardDeck& arg) const
+  override{
+      for(const Card& card : arg.lookup())
         if(card.type->name == name)
         return true;
     return false;
   }
 };
 
-struct PerTag : Condition<int>{
+struct PerTag : Multiplier{
   const Tags reqs;
-  PerTag(Tags taqs):reqs(taqs){}
-  int operator()(const CardDeck& state) const
-  {
+  PerTag(Tags taqs):Multiplier(1),reqs(taqs){}
+  int operator()(ConditionArgument arg) const
+  override{
     int res = 0;
-    for(const Card& card : state.lookup())
+    for(const Card& card : arg.that.lookup())
       res += card.type->tags * reqs;
     return res;  
   }
 }; 
 
-// @TODO 
-struct PerEnemyTag : Condition<int>{
+// Per tag from enemy deck, auto choose the best option
+struct PerEnemyTag : Multiplier{
   const Tags reqs;
-  PerEnemyTag(Tags taqs):reqs(taqs){}
-  int operator()(const CardDeck& state) const
-  {
-    return 0;
+  PerEnemyTag(Tags taqs):Multiplier(0),reqs(taqs){}
+  int operator()(ConditionArgument arg) const
+  override{
+    int maxRev{0};
+    for(auto& enemy : arg.other)
+    {
+      int enemyRev{0};
+      for(auto card : enemy.builtArea.cards)
+        enemyRev += card.type->tags * reqs;
+      maxRev = std::max(maxRev, enemyRev);
+    }
+    return maxRev;
   }
 }; 
 
-struct PerBuild : Condition<int>{
-  const int amount;
+struct PerBuild : Multiplier{
   const std::string name;
-  PerBuild(int amount, const std::string& name):amount(amount),name(name){}
-  int operator()(const CardDeck& state) const
-  {
+  PerBuild(int amount, const std::string& name):Multiplier(amount),name(name){}
+  int operator()(ConditionArgument arg) const
+  override{
     int res = 0;
-    for(const Card& card : state.lookup())
+    for(const Card& card : arg.that.lookup())
       if(card.type->name == name) res += amount;
     return res - amount; // munus one for itself 
   }
 };
 
-// @TODO
-struct PerGameBuild : Condition<int>{
-  const int amount;
+// Per building in the entire game
+struct PerGameBuild : Multiplier{
   const std::string name;
-  PerGameBuild(int amount, const std::string& name):amount(amount),name(name){}
-  int operator()(const CardDeck& state) const
-  {
-    return 0;
+  PerGameBuild(int amount, const std::string& name):Multiplier(amount),name(name){}
+  int operator()(ConditionArgument arg) const
+  override{
+    int totalRev{0};
+    for(auto& enemy : arg.other)
+    {
+      for(auto card : enemy.builtArea.cards)
+        totalRev += (card.type->name == name) * amount;
+    }
+    return totalRev;
   }
 };
 
-struct WithBuild : Condition<int>{
-  const int amount;
+struct WithBuild : Multiplier{
   const std::string name;
-  WithBuild(int amount, const std::string& name):amount(amount),name(name){}
-  int operator()(const CardDeck& state) const
-  {
-    int res = 0;
-    for(const Card& card : state.lookup())
+  WithBuild(int amount, const std::string& name):Multiplier(amount),name(name){}
+  int operator()(ConditionArgument arg) const
+  override{
+    for(const Card& card : arg.that.lookup())
       if(card.type->name == name) return amount;
     return 0;
   }

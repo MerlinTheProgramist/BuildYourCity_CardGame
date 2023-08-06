@@ -4,11 +4,11 @@
 #include <iostream>
 #include <cassert>
 
-int Gain::eval(const CardDeck& state) const
+int Gain::eval(ConditionArgument arg) const
 {
   int sum = base;
   for(auto&& req : multipliers)
-    sum+= req(state);
+    sum+= req(arg);
   return sum;
 }
 
@@ -51,7 +51,7 @@ std::vector<cardIdT> CardDeck::get_card_ids(const CardSet& offset) const
 
   for(const Card& card : lookup())
   {
-    res.emplace_back((std::pair<std::size_t, CardType>*)(card.type - sizeof(size_t)) - &offset[0]);
+    res.emplace_back((std::pair<std::size_t, CardType>*)(card.type - sizeof(size_t)) - &offset.cards[0]);
   }
   return res;
 }
@@ -102,7 +102,7 @@ void CardDeck::add(const CardType* cardType)
 }
 void CardDeck::add(cardIdT id, const CardSet& offset)
 {
-  cards.push_back(Card{&(offset.begin() + id)->second});
+  cards.push_back(Card{&(offset.cards.begin() + id)->second});
 }
 
 size_t CardDeck::size() const{ return cards.size();}
@@ -155,7 +155,7 @@ void Player::cancel_select_mode()
   handDeck.add(Card{toBeBuild});
 }
 
-void Player::progress()
+void Player::progress(CardPool& masterPool, const std::vector<Player>& otherDecks)
 {
   // if(!eval_can_progress()) return;
   
@@ -179,7 +179,7 @@ void Player::progress()
         eventSelectDeck.transfer(masterPool.discarded, eventSelectDeck.size());
           
         state = PlayerState::UPDATE_STATS; 
-        progress(); // @TEMPORARY__TEMPORARY
+        progress(masterPool, otherDecks); // @TEMPORARY__TEMPORARY
     }
     break;
     case PlayerState::SELECT_CARD:
@@ -205,11 +205,11 @@ void Player::progress()
     case PlayerState::UPDATE_STATS:
     {        
         //@RULES update victoryPoints
-        victoryPoints = builtArea.sumVictory();
+        victoryPoints = builtArea.sumVictory(otherDecks);
         //@RULES add cards revenue to hand
         masterPool.take(        
           handDeck,
-          currentIncome = builtArea.sumMoney()
+          currentIncome = builtArea.sumMoney(otherDecks)
         );
         state = PlayerState::FINISHED;
     }
@@ -224,6 +224,7 @@ void Player::progress()
   eval_can_progress();
 }
 
+/*
 void Player::pass()
 {
   assert(state == PlayerState::SELECT_CARD && "can only pass in build select stage");
@@ -237,7 +238,7 @@ void Player::pass()
     state = PlayerState::RESIGN_BONUS_SELECT;
   toBeBuild = nullptr;
 }
-
+*/
 
 bool Player::eval_can_progress()
 {
@@ -306,21 +307,21 @@ void CardDeck::unselect_all()
     card.selected = false;
 }
 
-int CardDeck::sumMoney() const
+int CardDeck::sumMoney(const std::vector<Player>& otherDecks) const
 {
   int sum = 0;
   for(Card card : lookup())
   {
-    sum += card.type->moneyRevenue.eval(*this);
+    sum += card.type->moneyRevenue.eval({*this, otherDecks});
   }
   return sum;
 }
-int CardDeck::sumVictory() const
+int CardDeck::sumVictory(const std::vector<Player>& otherDecks) const
 {
   int sum = 0;
   for(Card card : lookup())
   {
-    sum += card.type->victoryPoints.eval(*this);
+    sum += card.type->victoryPoints.eval({*this, otherDecks});
   }
   return sum;
 }

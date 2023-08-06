@@ -48,7 +48,7 @@ enum GameMsg : uint32_t{
   // Clinet_GameStarted,
   Server_RemovePlayer,
   Server_AddPlayer,
-  Game_ClientState,        //           
+  Server_ClientState,        //           
 
   // Game actions
   Game_SelectCard,         // (card id)
@@ -56,6 +56,7 @@ enum GameMsg : uint32_t{
   Game_Discard,            // (player id)
   // Game_CanProgress,        
   Game_Progress,           // ()
+  Game_Pass,               // ()
   Game_DealCards,          // (card id)
 
   // Game info from server
@@ -64,12 +65,16 @@ enum GameMsg : uint32_t{
   Game_PlayerState,
 };
 
+// @BAD_IDEA this is kind of bloat, this data would be better disconnected
+// client is using this for self, but is not using client field, really only info and player 
+// and player as a ptr is only relevant to the server that has an enigine instance that manages the players
+// for the client this is the only instance of player
 struct Client{
   uint32_t id{};
   // info provided by the client
   PlayerInfo info{};
   // game related data
-  Player* player{};
+  Player* player{new Player()};
 
   // network client
   std::weak_ptr<net_frame::connection<GameMsg>> client{};
