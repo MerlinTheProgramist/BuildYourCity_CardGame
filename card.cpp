@@ -51,7 +51,7 @@ std::vector<cardIdT> CardDeck::get_card_ids(const CardSet& offset) const
 
   for(const Card& card : lookup())
   {
-    res.emplace_back((std::pair<std::size_t, CardType>*)(card.type - sizeof(size_t)) - &offset.cards[0]);
+    res.emplace_back(card.type - offset.cards.data());
   }
   return res;
 }
@@ -102,7 +102,8 @@ void CardDeck::add(const CardType* cardType)
 }
 void CardDeck::add(cardIdT id, const CardSet& offset)
 {
-  cards.push_back(Card{&(offset.cards.begin() + id)->second});
+  // std::cout << "Loaded card id: "<< id << std::endl;
+  cards.push_back(Card{&offset.cards[id]});
 }
 
 size_t CardDeck::size() const{ return cards.size();}
@@ -155,7 +156,7 @@ void Player::cancel_select_mode()
   handDeck.add(Card{toBeBuild});
 }
 
-void Player::progress(CardPool& masterPool, const std::vector<Player>& otherDecks)
+void Player::progress(CardPool& masterPool, const std::vector<Player>& otherDecks, const CardDeck& selected)
 {
   // if(!eval_can_progress()) return;
   
@@ -179,13 +180,12 @@ void Player::progress(CardPool& masterPool, const std::vector<Player>& otherDeck
         eventSelectDeck.transfer(masterPool.discarded, eventSelectDeck.size());
           
         state = PlayerState::UPDATE_STATS; 
-        progress(masterPool, otherDecks); // @TEMPORARY__TEMPORARY
     }
     break;
     case PlayerState::SELECT_CARD:
     {
         // move build to temporary (will not show in hand) 
-        handDeck.pop_selected(toBeBuild);
+        toBeBuild = handDeck.pop_single_selected();
         // Progress to next state
         state = PlayerState::SELECT_PAYMENT;
     }
@@ -201,7 +201,7 @@ void Player::progress(CardPool& masterPool, const std::vector<Player>& otherDeck
         // Progress to next state
         state = PlayerState::UPDATE_STATS;
     }
-    // break; // @TEMPORARY__TEMPORARY
+    break; 
     case PlayerState::UPDATE_STATS:
     {        
         //@RULES update victoryPoints
@@ -218,14 +218,62 @@ void Player::progress(CardPool& masterPool, const std::vector<Player>& otherDeck
         state = PlayerState::SELECT_CARD;
     }
     break;
-    default:
-    break;
   }
   eval_can_progress();
 }
 
-/*
-void Player::pass()
+void Player::progress_light()
+{
+  switch(state)
+  {
+    case PlayerState::DISCARD_2:
+    {
+      CardDeck temp{};
+      handDeck.pop_selected(temp);
+      state = PlayerState::SELECT_CARD;
+    }break;
+    case PlayerState::RESIGN_BONUS_SELECT:
+    {
+        // add selected to hand
+        eventSelectDeck.pop_selected(handDeck);
+        // discard all other
+        state = PlayerState::UPDATE_STATS; 
+    }break;
+    case PlayerState::SELECT_CARD:
+    {
+        // move build to temporary (will not show in hand) 
+        toBeBuild = handDeck.pop_single_selected();
+        // Progress to next state
+        state = PlayerState::SELECT_PAYMENT;
+    }
+    break;
+    case PlayerState::SELECT_PAYMENT:
+    {
+        CardDeck temp{};
+        //@RULES remove payment
+        handDeck.pop_selected(temp);
+        
+        //@RULES build selected
+        builtArea.add(toBeBuild);
+        
+        // Progress to next state
+        state = PlayerState::UPDATE_STATS;
+    }
+    break; 
+    case PlayerState::UPDATE_STATS:
+    {
+        state = PlayerState::FINISHED;    
+    }
+    case PlayerState::FINISHED:
+    {
+        state = PlayerState::SELECT_CARD;
+    }
+    break;
+  }
+}
+
+// /*
+void Player::pass(CardPool& masterPool)
 {
   assert(state == PlayerState::SELECT_CARD && "can only pass in build select stage");
 
@@ -238,7 +286,7 @@ void Player::pass()
     state = PlayerState::RESIGN_BONUS_SELECT;
   toBeBuild = nullptr;
 }
-*/
+// */
 
 bool Player::eval_can_progress()
 {
@@ -326,6 +374,15 @@ int CardDeck::sumVictory(const std::vector<Player>& otherDecks) const
   return sum;
 }
 
+CardDeck CardDeck::get_selected() const
+{
+  CardDeck res{};
+  for(const Card& card : cards)
+    if(card.isSelected())
+      res.add(card.type);
+  return res;
+}
+
 void CardDeck::pop_selected(CardDeck& dest)
 {
   auto iter = cards.begin();
@@ -340,15 +397,13 @@ void CardDeck::pop_selected(CardDeck& dest)
   }
 }
 
-void CardDeck::pop_selected(const CardType*& dest)
+const CardType* CardDeck::pop_single_selected()
 {
   CardDeck temp;
   pop_selected(temp);
   assert(temp.size()==1 && "more than 1 card was selected");
-  dest = temp.get_cards().begin()->type;
+  return temp.get_cards().begin()->type;
 }
-
-
 
 int CardDeck::count_selected() const 
 {

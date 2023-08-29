@@ -55,14 +55,14 @@ enum GameMsg : uint32_t{
   Game_BuildCard,          // (player id, card id)
   Game_Discard,            // (player id)
   // Game_CanProgress,        
-  Game_Progress,           // ()
+  Game_Progress,           // request and allow progress ()
   Game_Pass,               // ()
-  Game_DealCards,          // (card id)
+  Game_DealCards,          // (vector<card id>)
 
   // Game info from server
   Game_Player_Built,       // other player built some card (card id)
   Game_Discount,           // (card id, new price)
-  Game_PlayerState,
+  // Game_PlayerState,
 };
 
 // @BAD_IDEA this is kind of bloat, this data would be better disconnected

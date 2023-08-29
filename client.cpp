@@ -3,6 +3,7 @@
 #include <memory>
 // UI
 #include <imgui.h>
+#include <sys/types.h>
 #include <unordered_map>
 #include "card.h"
 #include "engine.h"
@@ -25,7 +26,7 @@ public:
     ui_ip_address.resize(sizeof("000.000.000.000"));
     ui_port.reserve(sizeof("0000"));
     ui_server_port.reserve(sizeof("0000"));
-    ui_max_players.reserve(1);
+    ui_max_players.reserve(2);
 
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     SetConfigFlags(FLAG_VSYNC_HINT);
@@ -46,7 +47,7 @@ public:
         rlImGuiBegin();
         DrawUI();
         rlImGuiEnd();
-        DrawFPS(10, 10);
+        // DrawFPS(10, 10);
       EndDrawing();
     }
 
@@ -61,12 +62,16 @@ public:
     CloseWindow();
   }
 private:
+  bool awaiting_server{false};
   ClientState state{ClientState::IN_MENU};
   
   GameServer* gameServerInstance{};
 
   // GameState
-  Client myPlayer{};
+  id_t my_id;
+  Player player;
+  PlayerInfo info;
+  
   std::unordered_map<uint32_t, EnemyView> otherPlayers;
   struct
   {
@@ -104,16 +109,16 @@ private:
         ImGui::InputTextWithHint("server port", "60000", &ui_port[0], sizeof("00000"));
         if(ImGui::Button("Connect"))
         {
-            myPlayer.info.nickname = std::string(ui_nickname);
+            info.nickname = std::string(ui_nickname);
             if(Connect(ui_ip_address, static_cast<uint16_t>(std::stoi(ui_port))))
               state = ClientState::CONNECTING;
         }
         ImGui::InputTextWithHint("host port", "60000", &ui_server_port[0], sizeof("00000"));
-        ImGui::InputTextWithHint("max players", "2", &ui_max_players[0], 1); // one digit count
+        ImGui::InputTextWithHint("max players", "2", &ui_max_players[0], 2); // one digit count
           
         if(ImGui::Button("Start server"))
         {
-          myPlayer.info.nickname = std::string(ui_nickname);
+          info.nickname = std::string(ui_nickname);
           uint16_t port = static_cast<uint16_t>(std::stoi(ui_server_port));
           size_t maxPlayers = static_cast<size_t>(std::stoi(ui_max_players));
 
@@ -155,7 +160,6 @@ private:
   
   void Update(float deltaTime)
   {
-
     if(state == ClientState::CONNECTING)
     {
       ClearBackground(BLUE);
@@ -169,7 +173,10 @@ private:
       return;
     }
 
+    
     ClearBackground(DARKGRAY);
+
+    if(state != ClientState::PLAYING) return;
 
     // Draw the acctual game
     const Vector2 screenCenter = {(float)GetScreenWidth()/2,(float)GetScreenHeight()/2};
@@ -186,44 +193,49 @@ private:
     const CardType* zoom = ShowHand(
         {screenCenter.x, GetScreenHeight()-CARD_SIZE.y/2-20},
         -40, 
-        *myPlayer.player
+        player
     );
     {
         auto new_zoom = ShowBuilt(
             {screenCenter.x, screenCenter.y - CARD_SIZE.y/2},
             10,
-            *myPlayer.player
+            player
         );
         zoom = (zoom==nullptr)?new_zoom:zoom;
     
-        if(myPlayer.player->get_state() == PlayerState::RESIGN_BONUS_SELECT)
-            new_zoom = ShowEventSelect(screenCenter, -10, *myPlayer.player);
+        if(player.get_state() == PlayerState::RESIGN_BONUS_SELECT)
+            new_zoom = ShowEventSelect(screenCenter, -10, player);
         zoom = (zoom==nullptr)?new_zoom:zoom;
     }
 
     
     if(zoom!=nullptr)
         DrawZoom(zoom);
-    
-    switch(DrawGameUI(*myPlayer.player))
-    {
-      case NOTHING: break;
 
-      case PROGESS: 
+    if(awaiting_server)
+      DrawGameUI(player);
+    else
+      switch(DrawGameUI(player))
       {
-          message progressRequest{GameMsg::Game_Progress};
-          Send(progressRequest);
+        case NOTHING: break;
+
+        case PROGESS: 
+        {
+            awaiting_server = true;
+            message progressRequest{GameMsg::Game_Progress};
+
+            progressRequest << player.handDeck.get_selected().get_card_ids(GameEngine::masterSet);
+            Send(progressRequest);
+        }
+        break;
+        case PASS: 
+        {
+            awaiting_server = true;
+            message passRequest{GameMsg::Game_Pass};
+            Send(passRequest);
+        }
+        break;
       }
-      break;
-      case PASS: 
-      {
-          message passRequest{GameMsg::Game_Pass};
-          Send(passRequest);
-      }
-      break;
-    }
-    
-    
   }
 private:
   void CheckMsg()
@@ -242,15 +254,15 @@ private:
             state = ClientState::IN_LOBBY;
             std::cout << "Server Accepted you!" << std::endl;
             message msgSend{GameMsg::Client_RegisterWithServer};
-            std::cout << "Sending nickname: " << myPlayer.info.nickname.data() << " size:" << myPlayer.info.nickname.size() <<std::endl;
-            msgSend << myPlayer.info.nickname;
+            std::cout << "Sending nickname: " << info.nickname.data() << " size:" << info.nickname.size() <<std::endl;
+            msgSend << info.nickname;
             Send(msgSend);
           }
           break;
           case GameMsg::Client_AssignID:
           {
-            msg >> myPlayer.id;
-            std::cout << "Server provided your id: " << myPlayer.id << std::endl;
+            msg >> my_id;
+            std::cout << "Server provided your id: " << my_id << std::endl;
           }
           break;
           case GameMsg::Server_ClientState:
@@ -259,13 +271,21 @@ private:
             std::cout << "Game state updated to: " << (int)(state) << std::endl;
           }
           break;
+          // Server allowed you to progress
+          case GameMsg::Game_Progress:
+          {
+            awaiting_server = false;
+            player.progress_light();
+          }
+          break;
           case GameMsg::Server_RemovePlayer:
           {            
             uint32_t id;
             msg >> id;
-            if(id == myPlayer.id)
+            if(id == my_id)
             {
               std::cout << "[Client] Error, Server removed me!" << std::endl;
+              state = ClientState::IN_MENU;
               return;    
             }
             otherPlayers.erase(id);
@@ -281,9 +301,11 @@ private:
           // Gameplay related
           case GameMsg::Game_DealCards:
           {
-              cardIdT cardType;
-              msg >> cardType;
-              myPlayer.player->handDeck.add(cardType, GameEngine::masterSet);   
+              std::vector<cardIdT> cardTypes;
+              msg >> cardTypes;
+              std::cout << "Server gave me cards num: "<< cardTypes.size() << std::endl;
+              for(cardIdT id : cardTypes)
+                player.handDeck.add(id, GameEngine::masterSet);   
           }
           break;
 
@@ -296,7 +318,7 @@ private:
       }
     }
   }
-  
+
 };
 
 int main()

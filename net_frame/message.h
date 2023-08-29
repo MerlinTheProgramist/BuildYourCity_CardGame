@@ -62,7 +62,7 @@ namespace net_frame
     // same as above but only for std::string
     friend message<T>& operator<<(message<T>& msg, const std::string& str)
     {
-      std::cout << "accual string size: " << str.size() << std::endl;
+      // std::cout << "accual string size: " << str.size() << std::endl;
       size_t prev_size = msg.body.size();
       // resize vector
       msg.body.resize(msg.body.size() + str.size() + sizeof(std::string::size_type));
@@ -74,7 +74,28 @@ namespace net_frame
       // update message size
       msg.header.size = msg.body.size();
 
-      std::cout << "send string size: " << *(size_t*)(msg.body.data() + msg.body.size() - sizeof(std::string::size_type)) << std::endl;
+      // std::cout << "send string size: " << *(size_t*)(msg.body.data() + msg.body.size() - sizeof(std::string::size_type)) << std::endl;
+      
+      return msg;
+    }
+    
+    // same as above but only for std::vector
+    template<typename Type>
+    friend message<T>& operator<<(message<T>& msg, const std::vector<Type>& vec)
+    {
+      using size_type = typename std::vector<Type>::size_type;
+      size_t prev_size = msg.body.size();
+
+      size_t vec_byte_size = vec.size()*sizeof(Type);
+      // resize vector
+      msg.body.resize(msg.body.size() + vec_byte_size + sizeof(size_type));
+      // copy data to vector
+      std::memcpy(msg.body.data() + prev_size, vec.data(), vec_byte_size);
+      // additionaly add size_t indicating string size
+      size_type vec_size = vec.size();
+      std::memcpy(msg.body.data() + prev_size + vec_byte_size, &vec_size, sizeof(size_type));
+      // update message size
+      msg.header.size = msg.body.size();
       
       return msg;
     }
@@ -116,6 +137,33 @@ namespace net_frame
       // str.resize(str_size);
       // str.c_str() = *(msg.body.data() + new_size);
       str = std::string(reinterpret_cast<const char*>(msg.body.data() + new_size), str_size);
+
+      // update vector size 
+      msg.body.resize(new_size);
+
+      // update header
+      msg.header.size = msg.body.size();
+
+      return msg;
+    }
+    
+    // same as above but only for std::vector
+    template<typename Type>
+    friend message<T>& operator>>(message<T>& msg, std::vector<Type>& vec)
+    {
+      using size_type = typename std::vector<Type>::size_type;
+      // firstly extract size of the vector
+      size_type vec_size = *(size_type*)(msg.body.data() + msg.body.size() - sizeof(size_type));
+      // std::cout << "vector size: " << vec_size << std::endl;
+      size_t new_size = msg.body.size() - vec_size*sizeof(Type) - sizeof(size_type);
+      // std::cout << "new_size: " << new_size << std::endl;
+      
+      // copy data
+      // str.resize(str_size);
+      // str.c_str() = *(msg.body.data() + new_size);
+      vec.resize(vec_size);
+      std::memcpy(vec.data(), msg.body.data() + new_size, vec_size*sizeof(Type));
+      // vec = std::vector<Type>(reinterpret_cast<const Type*>(msg.body.data() + new_size), reinterpret_cast<const Type*>(msg.body.data() + new_size + vec_size));
 
       // update vector size 
       msg.body.resize(new_size);

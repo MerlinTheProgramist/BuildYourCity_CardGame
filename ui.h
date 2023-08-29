@@ -93,7 +93,6 @@ enum UIAction{
     NOTHING
 };
 
-[[nodiscard]]
 static UIAction DrawGameUI(Player& player)
 {
     const Color UI_BG    = Color{94,123,163,255};
@@ -306,7 +305,7 @@ static bool DrawCardPile(Vector2 pos, int n = 3, int spread=10)
 static void LoadTextures()
 {
     for(const auto& cardType : GameEngine::masterSet.cards)
-        generateCardTex(cardType.second);
+        generateCardTex(cardType);
     Image cardBackPattern = LoadImage("./textures/cardReverse.png");
     Image cardBackImage = ImageFromImage(cardBackPattern, {0,0,CARD_SIZE.x, CARD_SIZE.y});
     ImageDrawRectangleLines(&cardBackImage, Rectangle{0,0,CARD_SIZE.x, CARD_SIZE.y}, 4, WHITE);

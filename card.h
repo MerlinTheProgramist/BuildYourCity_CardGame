@@ -71,6 +71,7 @@ typedef struct Tags
 
 struct CardType
 {
+  const size_t count;
   // standard parameters 
   const std::string name;
   const int cost;  
@@ -84,7 +85,8 @@ struct CardType
   const bool max_one_per_player;
 
   const int value;
-  CardType(const std::string& name, 
+  CardType(size_t count,
+           const std::string& name, 
            int cost,
            Tags tags, 
            Gain moneyRevenue,
@@ -93,16 +95,17 @@ struct CardType
            std::initializer_list<Requirement> requirements = {},
            bool one_per_player = false,
            int value = 1)
-  : name(name),
-    cost(cost),
-    tags(tags),
-    moneyRevenue(moneyRevenue),
-    victoryPoints(victoryPoints),
-    requirements(requirements),
-    // special_effects(effects),
-    max_one_per_player(one_per_player),
-    value(value)
-  {
+  : count(count)
+  , name(name)
+  , cost(cost)
+  , tags(tags)
+  , moneyRevenue(moneyRevenue)
+  , victoryPoints(victoryPoints)
+  , requirements(requirements)
+  //,  special_effects(effects)
+  , max_one_per_player(one_per_player)
+  , value(value
+  ){
     
   }
 
@@ -139,9 +142,9 @@ public:
 
 
 struct CardSet{
-  std::vector<std::pair<std::size_t, CardType>> cards;
+  std::vector<CardType> cards;
 
-  CardSet(std::vector<std::pair<std::size_t, CardType>> cards)
+  CardSet(std::vector<CardType> cards)
   :cards(cards)
   {
     for(auto cardQ : cards)
@@ -173,8 +176,8 @@ public:
   {
     for(auto&& type : set.cards)
     {
-       for(int i = type.first; i>=0;--i)
-        cards.emplace_back(&type.second); 
+       for(int i = type.count; i>=0;--i)
+        cards.emplace_back(&type); 
     }
   }
   CardDeck():cards({}){}
@@ -198,7 +201,9 @@ public:
   int count_selected() const;
   std::vector<const CardType*> view_selected() const;
   void pop_selected(CardDeck& dest);
-  void pop_selected(const CardType*& dest);
+  CardDeck get_selected() const;
+
+  const CardType* pop_single_selected();
 
     
   int sumMoney(const std::vector<Player>& otherDecks) const;
@@ -217,7 +222,7 @@ struct CardPool
   void take(CardDeck& dst, std::size_t n);
 };
 
-enum class PlayerState{
+enum class PlayerState : uint32_t{
   DISCARD_2,
   SELECT_CARD,
   RESIGN_BONUS_SELECT,
@@ -225,6 +230,17 @@ enum class PlayerState{
   UPDATE_STATS,
   FINISHED
 };
+const std::string PlayerState_names[]
+{  
+  
+  "DISCARD_2",
+  "SELECT_CARD",
+  "RESIGN_BONUS_SELECT",
+  "SELECT_PAYMENT",
+  "UPDATE_STATS",
+  "FINISHED"
+};
+
 
 class Player
 {
@@ -238,11 +254,11 @@ class Player
     int victoryPoints{0};
     int currentIncome{0};
   
-    int selectedCount = 0; 
-    const CardType* toBeBuild = nullptr; 
+    int selectedCount{0}; 
+    const CardType* toBeBuild{}; 
     
-    mutable PlayerState state = PlayerState::DISCARD_2;
-    bool canProgress = false;
+    mutable PlayerState state{PlayerState::DISCARD_2};
+    bool canProgress{false};
     bool eval_can_progress();
   public:
     Player(/*CardPool& masterPool*/):
@@ -269,10 +285,11 @@ class Player
     // CardDeck& get_event_select();
 
     // action
-    void progress(CardPool& masterPool, const std::vector<Player>& otherDecks);
+    void progress(CardPool& masterPool, const std::vector<Player>& otherDecks, const CardDeck& selected);
+    void progress_light();
     void select_card(Card& card);
     void select_card(cardIdT id);
-    void pass();
+    void pass(CardPool& masterPool);
     
     void cancel_select_mode();
   

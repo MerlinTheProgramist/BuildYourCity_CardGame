@@ -170,16 +170,24 @@ protected:
 
       case GameMsg::Game_Progress:
       {
-        Player& player = *clientRoster.at(client->GetID()).player; 
-        player.progress(engine.masterPool, engine.players);
+        Client& player = clientRoster.at(client->GetID()); 
+        std::cout << "[SERVER] Player \""<< player.info.nickname<<"\" requested progress from state: "<< PlayerState_names[(int)player.player->get_state()] << std::endl;
 
-        message updateState{GameMsg::Game_PlayerState};
-        updateState << player.get_state();
+        std::vector<cardIdT> selectedCards;
+        msg >> selectedCards;
+        CardDeck selectedDeck;
+        for(cardIdT sel_id : selectedCards)
+          selectedDeck.add(sel_id, GameEngine::masterSet);
+         
+        player.player->progress(engine.masterPool, engine.players, selectedDeck);
+
+        message updateState{GameMsg::Game_Progress};
+        // updateState << player.player->get_state();
         MessageClient(client, updateState);
 
         if(engine.progressIfAllDone())
         {
-            message endRound{GameMsg::Game_PlayerState};
+            message endRound{GameMsg::Game_Progress};
             MessageAllClients(endRound); 
         }
       }
@@ -187,16 +195,16 @@ protected:
       case GameMsg::Game_Pass:
       {
         Player& player = *clientRoster.at(client->GetID()).player; 
-        player.pass();
+        player.pass(engine.masterPool);
 
-        message updateState{GameMsg::Game_PlayerState};
-        updateState << player.get_state();
+        message updateState{GameMsg::Game_Progress};
+        // updateState << player.get_state();
         MessageClient(client, updateState);
 
         if(engine.progressIfAllDone())
         {
-            message endRound{GameMsg::Game_PlayerState};
-            endRound << engine.players[0].get_state(); // state of the first player, becuase all have the same state
+            message endRound{GameMsg::Game_Progress};
+            // endRound << engine.players[0].get_state(); // state of the first player, becuase all have the same state
             MessageAllClients(endRound); 
         }
       }
@@ -235,7 +243,9 @@ protected:
 
       // Deal cards to clients
       message startingCards{GameMsg::Game_DealCards};
-      startingCards << clientRoster[id->first].player->handDeck.get_card_ids(engine.masterSet); 
+      auto cards = clientRoster[id->first].player->handDeck.get_card_ids(engine.masterSet);
+      std::cout << "[SERVER] sending deck of size: " << cards.size() << std::endl;  
+      startingCards << cards; 
       MessageClient(
         clientRoster[id->first].client.lock(), 
         startingCards
