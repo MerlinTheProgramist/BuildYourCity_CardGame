@@ -5,6 +5,8 @@
 - client commits its every action to server
 - client asks server for action verification
 
+## Game State
+- using state design pattern (finite state machine)
 
 
 ## Actions (sent to server)

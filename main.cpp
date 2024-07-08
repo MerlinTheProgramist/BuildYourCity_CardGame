@@ -1,9 +1,7 @@
-#include "card.h"
-#include "engine.h"
+#include "engine/engine.h"
 
 #include <cstddef>
-#include <raylib.h>
-#include <RaylibOpOverloads.hpp>
+#include <raylib.hpp>
 
 #include <unordered_map>
 
@@ -26,8 +24,8 @@ SetTargetFPS(60);               // Set our game to run at 60 frames-per-second
 GameEngine gameState(1);
 
 // Generate Textures
-for(const auto& cardType : gameState.masterSet.cards)
-    generateCardTex(cardType.second);
+for(const CardType& cardType : gameState.masterSet.cards)
+    generateCardTex(cardType);
 
 {
     Image cardBackPattern = LoadImage("./textures/cardReverse.png");
@@ -85,12 +83,12 @@ while (!WindowShouldClose())    // Detect window close button or ESC key
         {
             case PROGESS:
             {
-                currentPlayer.progress(gameState.masterPool, gameState.players);      
+                currentPlayer.progress(gameState.masterPool, gameState.players, CardDeck{});      
             }
             break;
             case PASS:
             {
-                currentPlayer.pass();
+                currentPlayer.pass(gameState.masterPool);
             }
             break;
             case NOTHING: break;

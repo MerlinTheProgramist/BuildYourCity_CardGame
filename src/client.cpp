@@ -1,27 +1,24 @@
 #include <cstdint>
 #include <raylib.h>
-#include <memory>
-// UI
 #include <imgui.h>
 #include <sys/types.h>
 #include <unordered_map>
-#include "card.h"
-#include "engine.h"
-#include "libraries/rlImGui/rlImGui.h"
 
-#include "net_frame/client.h"
-#include "net_frame/server.h"
+#include "../libraries/rlImGui/rlImGui.h"
+#include "../libraries/sonicpp/library/client.h"
+
+#include "engine/engine.h"
 #include "network_common.h"
 
+#include "ui.h"
 #include "server.h"
 
-#include "ui.h"
-
-class GameClient : net_frame::client_intefrace<GameMsg>
+class GameClient : sonicpp::ClientIntefrace<GameMsg>
 {
-  
+   
 public:
   GameClient()
+  : sonicpp::ClientIntefrace<GameMsg>{}
   {
     ui_ip_address.resize(sizeof("000.000.000.000"));
     ui_port.reserve(sizeof("0000"));
@@ -52,7 +49,7 @@ public:
     }
 
     // Notify server that we are disconnecting
-    message disconnect{GameMsg::Client_UnreginsterWithServer};
+    Message disconnect{GameMsg::Client_UnreginsterWithServer};
     Send(disconnect);
     
     Disconnect();
@@ -222,7 +219,7 @@ private:
         case PROGESS: 
         {
             awaiting_server = true;
-            message progressRequest{GameMsg::Game_Progress};
+            Message progressRequest{GameMsg::Game_Progress};
 
             progressRequest << player.handDeck.get_selected().get_card_ids(GameEngine::masterSet);
             Send(progressRequest);
@@ -231,7 +228,7 @@ private:
         case PASS: 
         {
             awaiting_server = true;
-            message passRequest{GameMsg::Game_Pass};
+            Message passRequest{GameMsg::Game_Pass};
             Send(passRequest);
         }
         break;
@@ -243,17 +240,17 @@ private:
     // Check for incoming messages
     if(IsConnected())
     {
-      while(!Incoming().is_empty())
+      while(auto msg_opt = NextMessage())
       {
-        auto msg = Incoming().pop_front().msg;
+        Message& msg = *msg_opt;
 
-        switch(msg.header.id)
+        switch(msg.GetType())
         {
           case GameMsg::Client_Accepted:
           {
             state = ClientState::IN_LOBBY;
             std::cout << "Server Accepted you!" << std::endl;
-            message msgSend{GameMsg::Client_RegisterWithServer};
+            Message msgSend{GameMsg::Client_RegisterWithServer};
             std::cout << "Sending nickname: " << info.nickname.data() << " size:" << info.nickname.size() <<std::endl;
             msgSend << info.nickname;
             Send(msgSend);
@@ -309,9 +306,7 @@ private:
           }
           break;
 
-          
-          case GameMsg::Client_RegisterWithServer:
-          case GameMsg::Client_UnreginsterWithServer:
+          default:
             std::cout << "[Client] Recaived unexpexted request ["<< msg.header.id << "] from the server" << std::endl;
           break;
         }

@@ -1,17 +1,43 @@
 
-FLAGS := 
+CC = g++
+CFLAGS =  -std=c++17
+
+SRCDIR = ./src
+LIBSRCDIR = $(SRCDIR)/engine
+OBJDIR = ./obj
+
+ENGINE = build/engine.a
+APPNAME = build/BuildYourCity
+
+
+LIBSOURCES  := $(filter-out $(LIBSRCDIR)/test.cpp, $(wildcard $(LIBSRCDIR)/*.cpp))
+LIBOBJECTS  := $(LIBSOURCES:$(LIBSRCDIR)/%.cpp=$(OBJDIR)/%.o)
+
+INCLUDES := $(wildcard $(SRCDIR)/*.h)
+
+.PHONY: engine debug release
 
 debug: FLAGS := ${FLAGS} -Wall -ggdb
 debug: all
 
 release: FLAGS := ${FLAGS} -O2
 release: all
+	
+.PHONY: all
+all: $(APPNAME)
 
-all: engine exe
+$(LIBOBJECTS): $(OBJDIR)/%.o : $(LIBSRCDIR)/%.cpp $(LIBSRCDIR)/*.h*
+	@$(CC) $(CFLAGS) -c $< -o $@ 
+	@echo "Compiled "$<" successfully!"
 
-engine:
-	g++ card.cpp ${FLAGS} -I. -c -o ./build/engine.o 
+$(ENGINE): $(LIBOBJECTS) 
+	@ar -rcs $@ $(LIBOBJECTS)
+	@echo "Compiled game-engine successfully!"
 
-exe:
-	g++ client.cpp ./libraries/rlImGui/rlImGui.cpp ./build/engine.o ${FLAGS} -I. -I./include -lraylib -limgui -o ./build/run -std=c++20
 
+$(APPNAME): $(ENGINE) $(SRCDIR)/*.cpp $(SRCDIR)/*.h*
+	@$(CC) -o $@ ${CFLAGS} -I./include -lraylib -limgui ./libraries/rlImGui/rlImGui.cpp $(SRCDIR)/*.cpp $(ENGINE)
+	@echo "Compiled $@ successfully!"
+
+
+engine: $(ENGINE)

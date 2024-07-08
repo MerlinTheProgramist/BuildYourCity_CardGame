@@ -1,0 +1,6 @@
+[submodule "libraries/sonicpp"]
+	path = libraries/sonicpp
+	url = https://github.com/MerlinTheProgramist/Sonicpp.git
+[submodule "libraries/rlImGui"]
+	path = libraries/rlImGui
+	url = https://github.com/raylib-extras/rlImGui

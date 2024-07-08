@@ -1,13 +1,14 @@
-#include "card.h"
-#include "engine.h"
+#include "engine/engine.h"
 
+#include <FileText.hpp>
+#include <TextureUnmanaged.hpp>
 #include <cstddef>
-#include <raylib.h>
-#include <RaylibOpOverloads.hpp>
+#include <imgui.h>
+#include <raylib-cpp.hpp>
 
 #include <unordered_map>
 
-const Vector2 CARD_SIZE = {200,300};
+const raylib::Vector2 CARD_SIZE = {200,300};
 const float CARD_ZOOM_SCALE = 2;
 
 static Texture2D cardReversImg;
@@ -15,66 +16,74 @@ static std::unordered_map<const CardType*, Texture2D> cardImages;
 static void generateCardTex(const CardType& type)
 {    
     const int width = CARD_SIZE.x, height = CARD_SIZE.y;
-    Image cardImage = GenImageColor(width, height, RAYWHITE);
+    raylib::Image cardImage(width, height, RAYWHITE);
 
     const int border = 4;
-    ImageDrawRectangle(&cardImage, border, border, CARD_SIZE.x-border*2, CARD_SIZE.y-border*2, BLUE);
+    cardImage.DrawRectangle(border, border, CARD_SIZE.x-border*2, CARD_SIZE.y-border*2, BLUE);
     
     // green circle with cost
     {
     const int fontSize = 20;
     const int r = 15, b = 2;
-    const Vector2 pos{20,20};
-    ImageDrawCircleV(&cardImage, pos, r+b, BLACK);
-    ImageDrawCircleV(&cardImage, pos, r, GREEN);
+    const raylib::Vector2 pos{20,20};
+    cardImage.DrawCircle(pos, r+b, BLACK);
+    cardImage.DrawCircle(pos, r, GREEN);
     
-    ImageDrawCircle(&cardImage, width-pos.x, pos.y, r+b, BLACK);
-    ImageDrawCircle(&cardImage, width-pos.x, pos.y, r, GREEN);
+    cardImage.DrawCircle(width-pos.x, pos.y, r+b, BLACK);
+    cardImage.DrawCircle(width-pos.x, pos.y, r, GREEN);
 
-    auto costText = TextFormat("%i", type.cost);
-    Vector2 LabelOffset = MeasureTextEx(GetFontDefault(), costText, fontSize, 1)/2.f;
-    ImageDrawText(&cardImage,costText, pos.x - LabelOffset.x, pos.y - LabelOffset.y, fontSize, WHITE);
-    ImageDrawText(&cardImage,costText, width - pos.x - LabelOffset.x, pos.y - LabelOffset.y, fontSize, WHITE);
+    auto costText = raylib::Text(TextFormat("%i", type.cost), fontSize);
+    raylib::Vector2 LabelOffset = costText.Measure()/2.f;
+    cardImage.DrawText(costText.GetText(), pos - LabelOffset, fontSize, WHITE);
+    cardImage.DrawText(costText.GetText(), raylib::Vector2{CARD_SIZE.x,0} - pos - LabelOffset, fontSize, WHITE);
     }
     
     // Main Label
     {
-    const int fontSize = 15;
-    int LabelOffset = MeasureText(type.name.c_str(), fontSize)/2;
-    ImageDrawText(&cardImage, type.name.c_str(), width/2-LabelOffset, 15, fontSize, BLACK);
+        const int fontSize = 20;
+        int LabelOffset = raylib::MeasureText(type.name, fontSize)/2;
+        cardImage.DrawText(type.name, width/2-LabelOffset, 15, fontSize, BLACK);
     } 
 
     // Symbols
     {    
-    const int fontSize = 15;
-    int offset =0; 
-    for(std::uint8_t i=0;i<type.tags.Transport;++i, offset+=fontSize+10)    
-        ImageDrawText(&cardImage, ".[]}.", 10, 50+offset, fontSize, ORANGE);
-    for(std::uint8_t i=0;i<type.tags.Shopping;++i, offset+=fontSize+10)    
-        ImageDrawText(&cardImage, "*\\./", 10, 50+offset, fontSize, GREEN);
-    for(std::uint8_t i=0;i<type.tags.Recreation;++i, offset+=fontSize+10)    
-        ImageDrawText(&cardImage, "_|_",   10, 50+offset, fontSize, BLUE);
+        int offset =0; 
+        const int fontSize = 15;
+        for(std::uint8_t i=0;i<type.tags.Transport;++i, offset+=fontSize+10)    
+            cardImage.DrawText(".[]}.", 10, 50+offset, fontSize, ORANGE);
+        for(std::uint8_t i=0;i<type.tags.Shopping;++i, offset+=fontSize+10)    
+            cardImage.DrawText("*\\./", 10, 50+offset, fontSize, GREEN);
+        for(std::uint8_t i=0;i<type.tags.Recreation;++i, offset+=fontSize+10)    
+            cardImage.DrawText("_|_",   10, 50+offset, fontSize, BLUE);
     }
-        
+
+    // Requirements
+    if(type.requirements.size()>0)
+    {
+        const int fontSize = 15;
+        std::string label{"Requirements: \n"};
+        for(Requirement req : type.requirements)
+            label.append("\t"+req.name+"\n");
+        cardImage.DrawText(label, 10, CARD_SIZE.y/2, fontSize, BLACK);        
+    }    
+
     // @TODO: Special Section
     
 
     // Earn
     {
-    const int fontSize = 25;
-    ImageDrawText(&cardImage, TextFormat("$ %i", type.moneyRevenue.base), 10, height-65, fontSize, BLACK);
-    ImageDrawText(&cardImage, TextFormat("* %i", type.victoryPoints.base), 10, height-40, fontSize, BLACK);
+      const int fontSize = 25;
+      cardImage.DrawText(TextFormat("$ %i", type.moneyRevenue.base), 10, height-65, fontSize, BLACK);
+      cardImage.DrawText(TextFormat("* %i", type.victoryPoints.base), 10, height-40, fontSize, BLACK);
     }
 
     cardImages.insert({&type, LoadTextureFromImage(cardImage)});
-
-    UnloadImage(cardImage);
 }
 
 static bool Button(Rectangle rec, Color color, const char* text, int fontSize, Color fontColor, bool active = true)
 {
     DrawRectangleRounded(rec, 3, 10, (active)?color:Color{220,220,220,255});
-    const Vector2 textSize = MeasureTextEx(GetFontDefault(), text, fontSize, 1);
+    const raylib::Vector2 textSize = MeasureTextEx(GetFontDefault(), text, fontSize, 1);
     DrawText(text, rec.x+(rec.width-textSize.x)/2, rec.y+(rec.height-textSize.y)/2, fontSize, fontColor);
     return (!active)?
         false:
@@ -82,7 +91,7 @@ static bool Button(Rectangle rec, Color color, const char* text, int fontSize, C
             CheckCollisionPointRec(GetMousePosition(), rec);
 }
 
-inline void DrawCard(Texture cardTex, Vector2 pos, float rotation=0,float scale=1, Color tint=WHITE)
+inline void DrawCard(Texture cardTex, raylib::Vector2 pos, float rotation=0,float scale=1, Color tint=WHITE)
 {
     DrawTextureEx(cardTex,pos,rotation,scale,tint);
 }
@@ -112,14 +121,14 @@ static UIAction DrawGameUI(Player& player)
     int xOffset = 20;
     {
     auto text = TextFormat(" %d $$ ", player.get_income());
-    Vector2 TextSize = MeasureTextEx(GetFontDefault(), text, FONT_SIZE, 2);
+    raylib::Vector2 TextSize = MeasureTextEx(GetFontDefault(), text, FONT_SIZE, 2);
     DrawRectangle(xOffset, 0, TextSize.x, TextSize.y+2*yOffset, UI_BG_HI);
     DrawText(text,xOffset, yOffset, FONT_SIZE, BLACK);
     xOffset += TextSize.x + xOffset;
     }
     {
     auto text = TextFormat(" %d <victory> ", player.get_victoryPoints());
-    Vector2 TextSize = MeasureTextEx(GetFontDefault(), text, FONT_SIZE, 2);
+    raylib::Vector2 TextSize = MeasureTextEx(GetFontDefault(), text, FONT_SIZE, 2);
     DrawRectangle(xOffset, 0, TextSize.x, TextSize.y+2*yOffset, UI_BG_HI);
     DrawText( text, xOffset, yOffset, FONT_SIZE, BLACK);
     }
@@ -179,9 +188,9 @@ static UIAction DrawGameUI(Player& player)
 }
 
 
-static const CardType* ShowHand(Vector2 pos, int spread, Player& player)
+static const CardType* ShowHand(raylib::Vector2 pos, int spread, Player& player)
 {
-    const Vector2 mPos = GetMousePosition();
+    const raylib::Vector2 mPos = GetMousePosition();
     const int cardOffset = CARD_SIZE.x + spread;
     
     const CardType* zoomedCard = nullptr;
@@ -216,9 +225,9 @@ static const CardType* ShowHand(Vector2 pos, int spread, Player& player)
     return zoomedCard;    
 }
 
-static const CardType* ShowBuilt(Vector2 pos, int spread, const Player& player)
+static const CardType* ShowBuilt(raylib::Vector2 pos, int spread, const Player& player)
 {
-    const Vector2 mPos = GetMousePosition();
+    const raylib::Vector2 mPos = GetMousePosition();
     const CardType* zoomedCard = nullptr;
     const bool zoomCard = IsKeyDown(KEY_LEFT_ALT);
 
@@ -239,9 +248,9 @@ static const CardType* ShowBuilt(Vector2 pos, int spread, const Player& player)
     return zoomedCard;
 }
 
-static const CardType* ShowEventSelect(Vector2 pos, int spread, Player& player)
+static const CardType* ShowEventSelect(raylib::Vector2 pos, int spread, Player& player)
 {
-    const Vector2 mPos = GetMousePosition();
+    const raylib::Vector2 mPos = GetMousePosition();
     const CardType* zoomedCard = nullptr;
     const bool zoomCard = IsKeyDown(KEY_LEFT_ALT);
 
@@ -285,16 +294,16 @@ static void DrawZoom(const CardType* card)
     // Darken the screen
     DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), {0,0,0,100});
     
-    const Vector2 centerCard = {((float)GetScreenWidth()-CARD_SIZE.x*CARD_ZOOM_SCALE)/2, ((float)GetScreenHeight()-CARD_SIZE.y*CARD_ZOOM_SCALE)/2};
+    const raylib::Vector2 centerCard = {((float)GetScreenWidth()-CARD_SIZE.x*CARD_ZOOM_SCALE)/2, ((float)GetScreenHeight()-CARD_SIZE.y*CARD_ZOOM_SCALE)/2};
     DrawTextureEx(cardImages.at(card), centerCard, 0,  CARD_ZOOM_SCALE, WHITE);
 }
 
-static bool DrawCardPile(Vector2 pos, int n = 3, int spread=10)
+static bool DrawCardPile(raylib::Vector2 pos, int n = 3, int spread=10)
 {    
     bool collide = false;
     for(int offset = 0;offset<n;offset++)
     {
-        Vector2 cardPos = {pos.x+offset*spread, pos.y+offset*spread};
+        raylib::Vector2 cardPos = {pos.x+offset*spread, pos.y+offset*spread};
         DrawTextureV(cardReversImg, cardPos, WHITE);
         if(!collide && CheckCollisionPointRec(GetMousePosition(), {cardPos.x, cardPos.y, CARD_SIZE.x, CARD_SIZE.y}))
             collide = true;    
@@ -310,9 +319,6 @@ static void LoadTextures()
     Image cardBackImage = ImageFromImage(cardBackPattern, {0,0,CARD_SIZE.x, CARD_SIZE.y});
     ImageDrawRectangleLines(&cardBackImage, Rectangle{0,0,CARD_SIZE.x, CARD_SIZE.y}, 4, WHITE);
     cardReversImg = LoadTextureFromImage(cardBackImage);  
-
-    UnloadImage(cardBackPattern);
-    UnloadImage(cardBackImage);
 }
 
 #ifdef OFFLINE
@@ -338,7 +344,7 @@ int main()
     // Main game loop
     while (!WindowShouldClose())    // Detect window close button or ESC key
     {
-        const Vector2 screenCenter = {(float)GetScreenWidth()/2,(float)GetScreenHeight()/2};
+        const raylib::Vector2 screenCenter = {(float)GetScreenWidth()/2,(float)GetScreenHeight()/2};
         
         auto& currentPlayer = gameState.getCurrentPlayer(); 
         

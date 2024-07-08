@@ -1,6 +1,8 @@
-#include "card.h"
-#include "engine.h"
-#include "net_frame/server.h"
+#pragma once 
+
+#include "engine/card.h"
+#include "engine/engine.h"
+#include "../libraries/sonicpp/library/server.h"
 #include "network_common.h"
 
 #include <net/if.h>
@@ -8,13 +10,28 @@
 #include <vector>
 #include <iostream>
 
-class GameServer : public net_frame::server_interface<GameMsg>
+class GameServer : public sonicpp::ServerInterface<GameMsg>
 {  
-  
+  // @BAD_IDEA this is kind of bloat, this data would be better disconnected
+  // client is using this for self, but is not using client field, really only info and player 
+  // and player as a ptr is only relevant to the server that has an enigine instance that manages the players
+  // for the client this is the only instance of player
+  struct Client{
+    uint32_t id{};
+    // info provided by the client
+    PlayerInfo info{};
+    // game related data
+    Player* player{new Player()};
+
+    // network client
+    std::weak_ptr<Connection> client{};
+  };
+
+
   
 public:
   GameServer(uint16_t port, size_t maxPlayerCount=2)
-  : net_frame::server_interface<GameMsg>(port)
+  : sonicpp::ServerInterface<GameMsg>(port)
   , engine(maxPlayerCount)
   , maxPlayerCount(maxPlayerCount)
   {
@@ -53,9 +70,8 @@ protected:
   {
     std::cout << "Client validated call" << std::endl;
     // Send a custom message that tells the client he, can now communicate
-    message msg{GameMsg::Client_Accepted};
-    // MessageClient(client, msg);
-    client->Send(msg);
+    Message msg{GameMsg::Client_Accepted};
+    MessageClient(client, msg);
   }
 
   void OnClientDisconnect(std::shared_ptr<Connection> client)
@@ -73,7 +89,7 @@ protected:
     }
   }
 
-  void OnMessage(std::shared_ptr<Connection> client, message& msg)
+  void OnMessage(std::shared_ptr<Connection> client, Message& msg)
   override
   {
     // If there are some clients that had disconnected
@@ -82,7 +98,7 @@ protected:
     {
       for(auto pid : garbageIDs)
       {
-        message m;
+        Message m;
         m.header.id = GameMsg::Server_RemovePlayer;
         m << pid;
         std:: cout << "Removing: " << pid << std::endl;
@@ -103,14 +119,14 @@ protected:
         std::cout << "[SERVER] Player with nick: " << newInfo.nickname.data() << std::endl;
 
         // inform other players about this client joining the lobby
-        message msgAddPlayer{GameMsg::Server_AddPlayer};
+        Message msgAddPlayer{GameMsg::Server_AddPlayer};
         msgAddPlayer << newInfo.nickname << client->GetID();
         MessageAllClients(msgAddPlayer, client);
 
         // Inform this player about the other players that have already been in the lobby
         for(const auto& cli : clientRoster)
         {
-          message msgAddExistingPlayer{GameMsg::Server_AddPlayer};
+          Message msgAddExistingPlayer{GameMsg::Server_AddPlayer};
           msgAddExistingPlayer << cli.second.info.nickname << client->GetID();
           MessageClient(client, msgAddExistingPlayer);    
         }
@@ -181,13 +197,13 @@ protected:
          
         player.player->progress(engine.masterPool, engine.players, selectedDeck);
 
-        message updateState{GameMsg::Game_Progress};
+        Message updateState{GameMsg::Game_Progress};
         // updateState << player.player->get_state();
         MessageClient(client, updateState);
 
         if(engine.progressIfAllDone())
         {
-            message endRound{GameMsg::Game_Progress};
+            Message endRound{GameMsg::Game_Progress};
             MessageAllClients(endRound); 
         }
       }
@@ -197,13 +213,13 @@ protected:
         Player& player = *clientRoster.at(client->GetID()).player; 
         player.pass(engine.masterPool);
 
-        message updateState{GameMsg::Game_Progress};
+        Message updateState{GameMsg::Game_Progress};
         // updateState << player.get_state();
         MessageClient(client, updateState);
 
         if(engine.progressIfAllDone())
         {
-            message endRound{GameMsg::Game_Progress};
+            Message endRound{GameMsg::Game_Progress};
             // endRound << engine.players[0].get_state(); // state of the first player, becuase all have the same state
             MessageAllClients(endRound); 
         }
@@ -228,7 +244,7 @@ protected:
   {
     
     // Reedem all players that the game has officially started
-    message startPlaying{GameMsg::Server_ClientState};
+    Message startPlaying{GameMsg::Server_ClientState};
     startPlaying << ClientState::PLAYING;
     MessageAllClients(startPlaying);
     
@@ -242,7 +258,7 @@ protected:
       clientRoster[id->first].player = &engine.getPlayer(index);
 
       // Deal cards to clients
-      message startingCards{GameMsg::Game_DealCards};
+      Message startingCards{GameMsg::Game_DealCards};
       auto cards = clientRoster[id->first].player->handDeck.get_card_ids(engine.masterSet);
       std::cout << "[SERVER] sending deck of size: " << cards.size() << std::endl;  
       startingCards << cards; 

@@ -2,9 +2,8 @@
 
 #include <cstdint>
 #include <string>
-#include "card.h"
-#include "net_frame/connection.h"
-
+#include "engine/card.h"
+#include "engine/card_collections.h"
 
 struct PlayerInfo
 {
@@ -63,20 +62,5 @@ enum GameMsg : uint32_t{
   Game_Player_Built,       // other player built some card (card id)
   Game_Discount,           // (card id, new price)
   // Game_PlayerState,
-};
-
-// @BAD_IDEA this is kind of bloat, this data would be better disconnected
-// client is using this for self, but is not using client field, really only info and player 
-// and player as a ptr is only relevant to the server that has an enigine instance that manages the players
-// for the client this is the only instance of player
-struct Client{
-  uint32_t id{};
-  // info provided by the client
-  PlayerInfo info{};
-  // game related data
-  Player* player{new Player()};
-
-  // network client
-  std::weak_ptr<net_frame::connection<GameMsg>> client{};
 };
 
